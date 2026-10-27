@@ -7,7 +7,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { ArrowRight, ShoppingBag, CircleCheck, CircleAlert } from "lucide-react"
 import { orderService } from "@/services/orderService"
-import { requestCulqiToken } from "@/lib/culqi"
+import { requestCulqiPayment, type CulqiOrderMetodo } from "@/lib/culqi"
 import { getErrorMessage } from "@/lib/getErrorMessage"
 import type { PedidoCuenta } from "./cuentaApi"
 import { Chip, Cargando, ErrorCarga } from "./CuentaBits"
@@ -16,6 +16,7 @@ import {
 } from "./cuentaShared"
 
 type AvisoPago = { tipo: "ok" | "err"; texto: string }
+const METODOS_CON_ORDEN: Array<CulqiOrderMetodo> = ["billetera_digital", "pago_efectivo", "cuotealo"]
 
 const PedidosTab = ({
   pedidos, error, onRetry,
@@ -54,11 +55,19 @@ const PedidosTab = ({
       const reissue = await orderService.reissuePaymentToken(pedido.id_pedido)
       if (!reissue.success) throw new Error(reissue.message || "No se pudo iniciar el pago")
       const publicKey = reissue.culqi_public_key || process.env.NEXT_PUBLIC_CULQI_PUBLIC_KEY
-      const token = await requestCulqiToken(
+      const ordenMetodo = METODOS_CON_ORDEN.includes(pedido.metodo_pago as CulqiOrderMetodo) ? (pedido.metodo_pago as CulqiOrderMetodo) : undefined
+      const result = await requestCulqiPayment(
         { total_final: Number(pedido.total_final), cliente_email: pedido.cliente_email },
         publicKey,
+        reissue.culqi_order_id,
+        ordenMetodo,
       )
-      const paymentResult = await orderService.payWithCulqi(pedido.id_pedido, token, reissue.payment_token)
+      if (result.kind === "order") {
+        setAvisoPago((m) => ({ ...m, [pedido.id_pedido]: { tipo: "ok", texto: `Pedido ${pedido.numero_pedido}: paga el QR desde tu billetera. Confirmamos apenas se acredite.` } }))
+        await onRetry()
+        return
+      }
+      const paymentResult = await orderService.payWithCulqi(pedido.id_pedido, result.id, reissue.payment_token)
       if (paymentResult.pending_reconciliation) {
         setAvisoPago((m) => ({ ...m, [pedido.id_pedido]: { tipo: "ok", texto: `Tu pago quedó en verificación para el pedido ${pedido.numero_pedido}.` } }))
       } else if (paymentResult.success) {
@@ -79,7 +88,7 @@ const PedidosTab = ({
     <div className="stack">
       {pedidos.map((pedido) => {
         const unidades = pedido.detalles.reduce((a, d) => a + Number(d.cantidad), 0)
-        const puedePagar = pedido.estado_pago === "pendiente" && pedido.metodo_pago === "tarjeta"
+        const puedePagar = pedido.estado_pago === "pendiente" && ["tarjeta", "yape", ...METODOS_CON_ORDEN].includes(pedido.metodo_pago)
         const aviso = avisoPago[pedido.id_pedido]
         const meta = [
           METODO_PAGO_LABEL[pedido.metodo_pago] ?? pedido.metodo_pago,

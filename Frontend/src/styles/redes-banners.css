@@ -205,3 +205,16 @@
 .pg-redes .big-pv img,.pg-redes .big-pv video{max-width:100%;max-height:60dvh;height:auto;border-radius:6px}
 .pg-redes .fi .ic{flex:none}
 .pg-redes svg{flex:none}
+/* Refinamiento visual: sin cambios de estructura ni comportamiento. */
+.pg-redes { --muted-foreground: 215 20% 36%; }
+.dark .pg-redes { --muted-foreground: 215 20% 70%; }
+.pg-redes .hd h1 { color: hsl(var(--primary)); font-weight: 700; }
+
+.pg-redes .tab[aria-selected=true] { background: hsl(var(--primary) / .08); }
+.pg-redes .nr:has(#in-whatsapp_number) { background: hsl(148 100% 39% / .06); }
+.pg-redes label[for="in-whatsapp_number"] svg, .pg-redes .pv .wa > svg { color: #00c950; }
+.pg-redes label[for="in-instagram_url"] svg { color: #c13584; }
+.pg-redes label[for="in-facebook_url"] svg { color: #1877f2; }
+.pg-redes label[for="in-youtube_url"] svg { color: #e5252a; }
+.pg-redes .nr button[aria-label^="Vaciar"]:not(:disabled):not([aria-disabled=true]) { color: hsl(var(--destructive-text)); border-color: hsl(var(--destructive-text) / .3); }
+.pg-redes .nr a.btn { color: hsl(var(--primary)); background: hsl(var(--primary) / .05); }

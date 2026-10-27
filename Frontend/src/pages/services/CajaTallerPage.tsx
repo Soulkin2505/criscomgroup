@@ -10,9 +10,9 @@ import "../../styles/taller-caja.css"
 
 type Periodo = "hoy" | "semana" | "mes"
 const PER: [Periodo, string, string][] = [["hoy", "Hoy", "Hoy"], ["semana", "Últimos 7 días", "7 días"], ["mes", "Mes actual", "Mes"]]
-const MET: Record<string, string> = { efectivo: "Efectivo", pos: "POS / Tarjeta", qr: "QR (Yape/Plin)", transferencia: "Transferencia", otro: "Otro" }
+const MET: Record<string, string> = { efectivo: "Efectivo", pos: "POS / Tarjeta", tarjeta: "Tarjeta", yape: "Yape", plin: "Plin", pago_link: "Enlace de pago", qr: "QR (Yape/Plin)", transferencia: "Transferencia", otro: "Otro" }
 const CAT: Record<string, string> = {
-  insumos: "Insumos", herramientas: "Herramientas", repuestos_stock: "Repuestos a stock", alquiler: "Alquiler", servicios: "Servicios",
+  mano_obra_tercerizada: "Técnico externo", insumos: "Insumos", herramientas: "Herramientas", repuestos_stock: "Repuestos a stock", alquiler: "Alquiler", servicios: "Servicios",
   transporte: "Transporte", limpieza: "Limpieza", software: "Software", capacitacion: "Capacitación", otros: "Otros",
 }
 const nf = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -75,7 +75,7 @@ export default function CajaTallerPage() {
   })()
 
   const tone = err ? "neu" : g < 0 ? "bad" : g > 0 ? "ok" : "neu"
-  const word = err ? "Sin datos" : g < 0 ? "Pérdida estimada" : g > 0 ? "Ganancia" : "Sin resultado"
+  const word = err ? "Sin datos" : g < 0 ? "Diferencia negativa" : g > 0 ? "Diferencia positiva" : "Sin resultado"
   const HeroIcon = tone === "bad" ? TrendingDown : tone === "ok" ? TrendingUp : CircleMinus
   const falta = costo - cobrado
   const why = err ? "" : g < 0
@@ -115,14 +115,14 @@ export default function CajaTallerPage() {
           </div>
         </div>
 
-        <div className="pg" role="tabpanel">
+        <div className="pg" role="tabpanel"><p className="hint">Vista del taller. Estos cobros también aparecen en Caja diaria, junto con ventas, sin duplicarse. La diferencia de este periodo no equivale a la ganancia por trabajos entregados.</p>
           {err && (
             <div className="err" role="alert">{I(CircleAlert, 20)}<p><b>No se pudo cargar el resumen de caja.</b> Los importes aparecen como "-" hasta que vuelva a cargar; no son ceros.</p>
               <button type="button" className="btn" onClick={load}>{I(RefreshCw)}Reintentar</button></div>
           )}
 
           {load_ ? (
-            <section className="card hero" aria-busy="true" aria-label="Ganancia estimada del periodo">
+            <section className="card hero" aria-busy="true" aria-label="Cobros menos costos del periodo">
               <div className="top"><div><Sk cls="lg w3" style={{ width: 220 }} /><Sk cls="xl" style={{ marginTop: 8 }} /></div>
                 <div className="eq" style={{ justifyContent: "flex-start" }}><Sk cls="lg" style={{ width: 100 }} /><Sk cls="lg" style={{ width: 120 }} /><Sk cls="lg" style={{ width: 110 }} /><Sk cls="lg" style={{ width: 110 }} /></div></div>
               <div className="why"><Sk cls="w1" /></div>
@@ -131,7 +131,7 @@ export default function CajaTallerPage() {
             <section className="card hero" aria-labelledby="h-gan">
               <div className="top">
                 <div>
-                  <div className="lb"><span id="h-gan">Ganancia estimada del periodo</span><span className={`st ${tone}`}>{I(HeroIcon)}{word}</span></div>
+                  <div className="lb"><span id="h-gan">Cobros menos costos del periodo</span><span className={`st ${tone}`}>{I(HeroIcon)}{word}</span></div>
                   <div className={`big num ${err ? "" : tone}`}>{err ? <Dash /> : signed(g)}</div>
                 </div>
                 <div className="eq num" role="group" aria-label="Fórmula: Cobrado menos Costo de repuestos menos Gastos del taller igual al resultado">

@@ -26,8 +26,8 @@ export const PRIM: Record<string, [string, string]> = {
   recibido: ["Iniciar diagnóstico", "diagnostico"], diagnostico: ["Pasar a Cotizado", "cotizado"], cotizado: ["Marcar Aprobado", "aprobado"],
   aprobado: ["Iniciar reparación", "en_proceso"], en_proceso: ["Pasar a En pruebas", "pruebas"], pruebas: ["Marcar Listo para entregar", "listo"], listo: ["Entregar", "entregado"],
 }
-export const METODO: Record<string, string> = { efectivo: "Efectivo", pos: "POS", qr: "QR", transferencia: "Transferencia", otro: "Otro" }
-export const FISCAL: Record<string, string> = { recibo_honorarios: "Recibo por honorarios (RHE)", boleta_factura: "Boleta / factura" }
+export const METODO: Record<string, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta", yape: "Yape", plin: "Plin", pago_link: "Enlace de pago", qr: "QR sin especificar", transferencia: "Transferencia", otro: "Otro" }
+export const FISCAL: Record<string, string> = { mixta: "Productos: boleta/factura · Servicio: RHE", recibo_honorarios: "Recibo por honorarios (RHE)", boleta_factura: "Boleta / factura" }
 export const FACT: Record<string, string> = { sin_facturar: "Sin facturar", pendiente_emision: "Pendiente de emisión", emitido: "Emitido", error: "Error" }
 export const ETAPA: Record<string, string> = {
   recepcion: "Recepción", diagnostico: "Diagnóstico", reparacion: "Reparación", pruebas: "Pruebas", entrega: "Entrega", otro: "Otro",

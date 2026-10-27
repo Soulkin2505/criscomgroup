@@ -1,6 +1,7 @@
 'use strict';
 // GET /api/ecommerce/config-publica — datos públicos de la empresa para el ecommerce.
-// Solo campos seguros: JAMAS ruc, sol_user/sol_pass, cert_path, client_id/secret ni series SUNAT.
+// Razon social/RUC/direccion son datos de registro publico (exigidos por Culqi e INDECOPI);
+// sol_user/sol_pass, cert_path y client_id/secret jamas se exponen aqui.
 const Company = require('../models/company.model');
 
 // Mismos defaults de ERP que social_links.controller: ambos endpoints públicos
@@ -13,18 +14,28 @@ const DEFAULT_REDES = Object.freeze({
   whatsapp_number: '51904589554',
 });
 
+// Correo de soporte/ventas: fijo para el negocio, no depende de cual RUC se muestre.
+const SOPORTE_EMAIL = 'ventas@criscomgroup.com.pe';
+
 const findPrimaryCompany = () => Company.findOne({
   order: [['emisor_predeterminado', 'DESC'], ['id_company', 'ASC']],
 });
 
+// La empresa que se muestra en la web: la marcada con mostrar_en_web (una a la vez, elegida
+// desde Redes y banners); si ninguna fue elegida aun, se cae a la emisora predeterminada.
+const findPublicCompany = async () => (await Company.findOne({ where: { mostrar_en_web: true } })) || findPrimaryCompany();
+
 exports.getConfigPublica = async (_req, res) => {
   try {
-    const company = await findPrimaryCompany();
+    const company = await findPublicCompany();
     const whatsapp = company?.whatsapp_number || DEFAULT_REDES.whatsapp_number;
     res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=900');
     return res.json({
       nombre_comercial: company?.razon_social || null,
+      razon_social: company?.razon_social || null,
+      ruc: company?.ruc || null,
       direccion: company?.direccion || null,
+      correo: SOPORTE_EMAIL,
       horario: {
         inicio: company?.horario_inicio || null,
         fin: company?.horario_fin || null,

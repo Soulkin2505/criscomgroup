@@ -151,3 +151,49 @@
   .pg-home .grid4 { grid-template-columns:repeat(3,1fr); }
   .pg-home .skel-grid { grid-template-columns:repeat(3,1fr); }
 }
+
+/* Presentación comercial: se conserva el orden y los estados de cada sección. */
+.pg-home .hero { border:0; border-radius:20px; background:linear-gradient(125deg,#35105e 0%,#572093 58%,#7129ba 100%); }
+.pg-home .hero-txt { padding:40px 32px; justify-content:center; gap:28px; }
+.pg-home .hero-txt h1 { font-size:clamp(32px,3.4vw,50px); letter-spacing:-.04em; line-height:1.08; }
+.pg-home .hero-txt h1 span { color:#edd5ff; }
+.pg-home .hero-eyebrow { display:flex; align-items:center; gap:8px; margin:0 0 20px; color:#eee0fa; font-size:12px; font-weight:700; letter-spacing:.16em; }
+.pg-home .hero-description { margin:20px 0 0; max-width:440px; color:#eee0fa; font-size:16px; line-height:1.7; }
+.pg-home .hero-caption { margin:0; color:#eee0fa; font-size:12px; letter-spacing:.04em; }
+.pg-home .btn-hero-secondary { color:#fff; border-color:#cf9ff5; }
+.pg-home .btn-hero-secondary:hover { background:#ffffff14; }
+.pg-home .welcome-media { background-image:linear-gradient(90deg,#3b1a6200,#20103e12),url('/banner-criscom-hardware.jpg'); background-position:center; }
+.pg-home .sec-hd h2 { font-size:25px; letter-spacing:-.025em; }
+.pg-home .box:not(.err) { padding:16px 20px; border-color:var(--border); background:var(--card); }
+.pg-home .box:not(.err) .tile { width:40px; height:40px; background:var(--primary-soft); }
+.pg-home .box:not(.err) h3 { font-size:14px; font-weight:600; }
+.pg-home .box:not(.err) p { font-size:13px; }
+.pg-home .need { position:relative; padding:28px; gap:18px; border-radius:16px; background:linear-gradient(160deg,var(--primary-soft),transparent 60%),var(--card); }
+.pg-home .need .tile { width:52px; height:52px; background:var(--primary-soft); border-radius:14px; }
+.pg-home .need .tile svg { width:25px; height:25px; }
+.pg-home .need h3 { font-size:21px; letter-spacing:-.025em; }
+.pg-home .need p { margin-top:8px; line-height:1.7; }
+.pg-home .need .btn { margin-top:auto; color:var(--primary); border-color:var(--border-strong); }
+.pg-home .need:hover { border-color:var(--primary); }
+.pg-home .cat, .pg-home .pc, .pg-home .post { transition:border-color .18s ease; }
+.pg-home .cat:hover, .pg-home .pc:hover, .pg-home .post:hover { border-color:var(--primary); }
+.pg-home .comm { border-radius:18px; border-top:3px solid var(--primary); background:linear-gradient(120deg,var(--primary-soft),transparent 65%),var(--card); }
+.pg-home .comm h2 { font-size:26px; letter-spacing:-.03em; }
+@media (max-width:700px) {
+  .pg-home .hero { border-radius:16px; }
+  .pg-home .hero-txt { padding:26px 22px; gap:22px; }
+  .pg-home .hero-txt h1 { font-size:34px; }
+  .pg-home .hero-description { font-size:15px; line-height:1.6; }
+  .pg-home .hero-welcome .welcome-media { order:0; aspect-ratio:16/9; }
+  .pg-home .hero-ctas .btn { white-space:normal; min-height:48px; }
+  .pg-home .sec-hd h2 { font-size:22px; }
+  .pg-home .sec-hd { flex-wrap:wrap; gap:0 12px; }
+  .pg-home .box:not(.err) { display:grid; grid-template-columns:40px minmax(0,1fr); gap:12px; padding:16px; }
+  .pg-home .box:not(.err) > .btn { grid-column:2; justify-self:start; }
+  .pg-home .need { grid-template-columns:52px minmax(0,1fr); padding:22px; gap:14px; }
+  .pg-home .need .btn { justify-self:start; }
+  .pg-home .comm h2 { font-size:22px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .pg-home .cat, .pg-home .pc, .pg-home .post { transition:none; }
+}

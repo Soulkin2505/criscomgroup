@@ -18,6 +18,7 @@ module.exports = sequelize.define('GastoTaller', {
       'limpieza',       // limpieza y mantenimiento del local
       'software',       // licencias, suscripciones, diagnóstico
       'capacitacion',   // cursos, certificaciones del personal técnico
+      'mano_obra_tercerizada',
       'otros'
     ),
     allowNull: false,

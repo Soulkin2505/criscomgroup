@@ -9,11 +9,13 @@ import Link from "next/link"
 import { Loader, MessageCircle, RotateCcw, ShoppingBag, XCircle } from "lucide-react"
 import { orderService } from "@/services/orderService"
 import { ecommerceAuthService } from "@/services/ecommerceApi"
-import { requestCulqiToken } from "@/lib/culqi"
+import { requestCulqiPayment, type CulqiOrderMetodo } from "@/lib/culqi"
 import { getErrorMessage } from "@/lib/getErrorMessage"
 import { useConfigPublica } from "@/hooks/useSocialLinks"
 import { chipOf, ESTADO_PAGO, ESTADO_PEDIDO, money, waAyuda } from "./checkoutShared"
 import "@/styles/checkout.css"
+
+const METODOS_CON_ORDEN: Array<CulqiOrderMetodo> = ["billetera_digital", "pago_efectivo", "cuotealo"]
 
 const PaymentErrorView = () => {
   const router = useRouter()
@@ -22,7 +24,7 @@ const PaymentErrorView = () => {
   const numero = searchParams.get("pedido") || searchParams.get("order") || ""
   const idPedido = Number(searchParams.get("id") || 0)
   const errorParam = searchParams.get("error") || ""
-  const [chips, setChips] = useState<{ estado: string; estado_pago: string; total_final: string } | null>(null)
+  const [chips, setChips] = useState<{ estado: string; estado_pago: string; metodo_pago: string; total_final: string } | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [retryError, setRetryError] = useState("")
@@ -34,7 +36,7 @@ const PaymentErrorView = () => {
   useEffect(() => {
     if (!numero) return
     orderService.trackOrder(numero)
-      .then((r) => { if (r?.success) setChips({ estado: r.pedido.estado, estado_pago: r.pedido.estado_pago, total_final: r.pedido.total_final }) })
+      .then((r) => { if (r?.success) setChips({ estado: r.pedido.estado, estado_pago: r.pedido.estado_pago, metodo_pago: r.pedido.metodo_pago, total_final: r.pedido.total_final }) })
       .catch(() => setChips(null))
   }, [numero])
 
@@ -48,8 +50,13 @@ const PaymentErrorView = () => {
       const reissue = await orderService.reissuePaymentToken(idPedido)
       if (!reissue.success) throw new Error(reissue.message || "No se pudo iniciar el pago")
       const publicKey = reissue.culqi_public_key || process.env.NEXT_PUBLIC_CULQI_PUBLIC_KEY
-      const token = await requestCulqiToken({ total_final: chips?.total_final || 0, cliente_email: "" }, publicKey)
-      const paymentResult = await orderService.payWithCulqi(idPedido, token, reissue.payment_token)
+      const ordenMetodo = METODOS_CON_ORDEN.includes(chips?.metodo_pago as CulqiOrderMetodo) ? (chips?.metodo_pago as CulqiOrderMetodo) : undefined
+      const result = await requestCulqiPayment({ total_final: chips?.total_final || 0, cliente_email: "" }, publicKey, reissue.culqi_order_id, ordenMetodo)
+      if (result.kind === "order") {
+        router.push(`/order-confirmation/${encodeURIComponent(numero)}?pago=verificacion`)
+        return
+      }
+      const paymentResult = await orderService.payWithCulqi(idPedido, result.id, reissue.payment_token)
       if (paymentResult.pending_reconciliation) {
         router.push(`/order-confirmation/${encodeURIComponent(numero)}?pago=verificacion`)
       } else {
@@ -87,7 +94,7 @@ const PaymentErrorView = () => {
               <div><span className="lab">Pago</span>{renderChip(chips.estado_pago, ESTADO_PAGO)}</div>
             </div>
           ) : null}
-          <p>El pago con tarjeta no se completó y tu pedido sigue pendiente de pago. Puedes reintentar el pago.</p>
+          <p>El pago no se completó y tu pedido sigue pendiente de pago. Puedes reintentar el pago.</p>
           {errorParam ? <p role="alert" style={{ color: "var(--destructive-text)" }}>{errorParam}</p> : null}
           {chips ? (
             <dl className="kv">
@@ -110,7 +117,7 @@ const PaymentErrorView = () => {
                     <RotateCcw className="ck-ic" aria-hidden />Reintentar pago
                   </button>
                   <p className="fine" style={{ margin: 0 }}>
-                    Para reintentar el pago con tarjeta necesitas <Link className="lnki" href="/iniciar-sesion">iniciar sesión</Link>.
+                    Para reintentar el pago necesitas <Link className="lnki" href="/iniciar-sesion">iniciar sesión</Link>.
                   </p>
                 </>
               )

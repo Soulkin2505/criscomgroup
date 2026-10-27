@@ -46,7 +46,7 @@ export type WorkOrder = {
   tecnico_id?: number | null;
   token_seguimiento?: string;
   venta_id?: number;
-  clasificacion_fiscal?: "recibo_honorarios" | "boleta_factura";
+  clasificacion_fiscal?: "recibo_honorarios" | "boleta_factura" | "mixta";
   estado_facturacion?: "sin_facturar" | "pendiente_emision" | "emitido" | "error";
   referencia_comprobante?: string;
   cliente_registrado?: TechnicalClient;
@@ -85,7 +85,7 @@ export type WorkOrderEvent = {
   creado_en: string;
 };
 export type WorkOrderPaymentMethod =
-  "efectivo" | "pos" | "qr" | "transferencia" | "otro";
+  "efectivo" | "pos" | "qr" | "transferencia" | "otro" | "tarjeta" | "yape" | "plin" | "pago_link";
 export type WorkOrderPayment = {
   id_pago_servicio: number;
   id_orden_servicio: number;

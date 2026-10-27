@@ -12,10 +12,14 @@ export const metadata: Metadata = {
 
 export default function ServicioTecnicoPage() {
   return (
-    <div className="pg-servicios">
+    <div className="pg-servicios technical-page">
       <div className="cx">
         <header className="hd">
-          <h1>Servicio técnico</h1>
+          <div className="service-intro">
+            <p className="service-eyebrow">SERVICIO TÉCNICO CRISCOM</p>
+            <h1>Volvamos a poner tu equipo en marcha.</h1>
+            <p>Cuéntanos qué sucede. Te contactaremos para coordinar el ingreso y la revisión de tu equipo.</p>
+          </div>
           <Link className="btn out" href="/servicio-tecnico/seguimiento">
             <span>Tengo una orden: consultar con mi token</span>
             <ArrowRight size={18} className="ic" aria-hidden />

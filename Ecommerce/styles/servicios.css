@@ -28,7 +28,7 @@
 
 /* Tarjetas planas */
 .pg-servicios .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
-.pg-servicios .card > h2, .pg-servicios .h2 { margin:0 0 16px; font-size:16px; font-weight:600; line-height:1.3; }
+.pg-servicios .card > h2, .pg-servicios .h2 { margin:0 0 20px; font-size:18px; font-weight:650; line-height:1.3; }
 .pg-servicios .mut { color:var(--muted-foreground); }
 .pg-servicios .note { display:flex; gap:8px; align-items:center; color:var(--muted-foreground); font-size:13px; }
 .pg-servicios .note svg { flex:none; }
@@ -207,3 +207,18 @@
    .pg-home/.pg-chrome; aqui .pg-servicios recupera su propio color. */
 .dark .pg-servicios span:not(.pg-home *):not(.pg-chrome *) { color:inherit !important; }
 .dark .pg-servicios span.mut:not(.pg-home *):not(.pg-chrome *) { color:var(--muted-foreground) !important; }
+
+/* Introducción visual del servicio; el formulario conserva su contrato. */
+.technical-page .cx { max-width:1160px; gap:24px; padding-top:32px; }
+.technical-page .hd { align-items:flex-start; padding:32px; border:1px solid var(--border); border-radius:18px; background:linear-gradient(120deg,var(--primary-soft),transparent 80%),var(--card); gap:20px; }
+.technical-page .service-intro { flex:1 1 480px; max-width:650px; }
+.technical-page .service-eyebrow { margin:0 0 14px; color:var(--primary); font-size:12px; font-weight:700; letter-spacing:.12em; }
+.technical-page .hd h1 { font-size:clamp(28px,3vw,40px); font-weight:750; letter-spacing:-.035em; max-width:560px; }
+.technical-page .service-intro > p:last-child { margin:16px 0 0; line-height:1.7; color:var(--muted-foreground); font-size:15px; }
+.technical-page .hd > .btn { white-space:normal; text-align:center; }
+.technical-page .card { border-radius:16px; padding:26px; }
+@media (max-width:700px) {
+  .technical-page .cx { padding:20px 16px; }
+  .technical-page .hd, .technical-page .card { padding:22px 18px; }
+  .technical-page .hd > .btn { width:100%; }
+}

@@ -61,4 +61,65 @@ const aplicarMovimiento = async ({
   return { stockAnterior, stockNuevo };
 };
 
-module.exports = { aplicarMovimiento };
+/**
+ * Unico punto de escritura de productos.stock_reservado + kardex.
+ *
+ * stock_reservado NO es stock físico: son unidades de pedidos web ya pagados
+ * pero aún no entregados. Disponible-para-vender = stock - stock_reservado.
+ * El stock físico solo se mueve de verdad en aplicarMovimiento, al entregar.
+ *
+ * tipo 'reserva' (delta>0): al confirmarse el pago de un pedido web.
+ * tipo 'liberacion' (delta<0): al cancelar/reembolsar un pedido que nunca se
+ *   entregó (libera sin tocar stock físico, porque nunca salió), o al
+ *   entregarlo de verdad (la reserva ya se "usó"; quien llama aplica esto
+ *   junto con aplicarMovimiento tipo 'venta' en la misma transacción).
+ */
+const ajustarReserva = async ({
+  productoId,
+  delta,
+  tipo,
+  referenciaTipo = null,
+  referenciaId = null,
+  motivo = '',
+  usuarioId = null,
+  affiliateBusinessId = null,
+  transaction,
+}) => {
+  if (!transaction) throw new Error('ajustarReserva requiere una transaccion');
+  if (!['reserva', 'liberacion'].includes(tipo)) throw new Error('tipo invalido para ajustarReserva');
+  const cantidad = Math.abs(Number(delta));
+  if (!Number.isInteger(cantidad) || cantidad <= 0) throw new Error('La cantidad del movimiento debe ser un entero mayor que cero');
+
+  const where = { id_producto: productoId };
+  if (delta < 0) where.stock_reservado = { [Op.gte]: cantidad };
+  const [afectados] = await Producto.unscoped().update(
+    { stock_reservado: literal(`stock_reservado ${delta < 0 ? '-' : '+'} ${cantidad}`) },
+    { where, transaction, validate: false }
+  );
+
+  const actual = await Producto.unscoped().findByPk(productoId, { attributes: ['stock', 'stock_reservado'], transaction });
+  if (afectados === 0) {
+    const error = new Error(`Reserva insuficiente para liberar. Solicitado: ${cantidad}, Reservado: ${actual ? Number(actual.stock_reservado) : 0}`);
+    error.status = 400;
+    throw error;
+  }
+
+  // stock_anterior/stock_nuevo del kardex describen stock físico, que aquí no
+  // cambia — se registra tal cual estaba, para no sugerir un movimiento físico.
+  const stockFisico = Number(actual.stock);
+  await MovimientoInventario.create({
+    producto_id: productoId,
+    tipo,
+    cantidad,
+    stock_anterior: stockFisico,
+    stock_nuevo: stockFisico,
+    referencia_tipo: referenciaTipo,
+    referencia_id: referenciaId,
+    motivo,
+    usuario_id: usuarioId,
+    affiliate_business_id: affiliateBusinessId,
+  }, { transaction });
+  return { stockReservadoNuevo: Number(actual.stock_reservado) };
+};
+
+module.exports = { aplicarMovimiento, ajustarReserva };

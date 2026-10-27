@@ -11,15 +11,17 @@ interface RadioCardProps {
   icon: LucideIcon
   title: string
   sub: string
+  disabled?: boolean
 }
 
-const RadioCard = ({ name, value, checked, onChange, icon: Icon, title, sub }: RadioCardProps) => (
-  <label className="rc">
+const RadioCard = ({ name, value, checked, onChange, icon: Icon, title, sub, disabled }: RadioCardProps) => (
+  <label className={`rc${disabled ? " rc-disabled" : ""}`} aria-disabled={disabled || undefined}>
     <input
       type="radio"
       name={name}
       value={value}
       checked={checked}
+      disabled={disabled}
       onChange={() => onChange(value)}
     />
     <span className="rcic"><Icon className="ck-ic" aria-hidden /></span>

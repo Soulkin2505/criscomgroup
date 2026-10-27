@@ -2,9 +2,11 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { sequelize, Pedido, PedidoDetalle, Producto, Pago } = require('../models');
 const culqi = require('../services/culqi.service');
+const culqiOrders = require('../services/culqi-orders.service');
 const { finalizePaidOrder } = require('../services/order-finalization.service');
 const shippingQuote = require('../services/shipping-quote.service');
 const { deleteUnpaidOrder } = require('../services/order-expiration.service');
+const { aplicarMovimiento, ajustarReserva } = require('../services/stock.service');
 const { Op } = require('sequelize');
 
 const affiliateOrderIds = async req => {
@@ -44,11 +46,62 @@ const publicOrder = order => {
     numero_pedido: data.numero_pedido,
     estado: data.estado,
     estado_pago: data.estado_pago,
+    metodo_pago: data.metodo_pago,
     total_final: data.total_final,
     tipo_entrega: data.tipo_entrega,
     fecha_creacion: data.fecha_creacion,
     detalles: data.detalles,
   };
+};
+
+// Culqi recomienda mandar estos datos en cada cargo para mejorar su propio
+// motor de detección de fraude (ver "Denegaciones" en su manual). Todos los
+// campos son opcionales: si el pedido es recojo en tienda no hay dirección,
+// y simplemente se omite — Culqi igual acepta el cargo.
+const antifraudDetailsFor = order => {
+  const [firstName, ...rest] = String(order.cliente_nombre || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    first_name: firstName || undefined,
+    last_name: rest.join(' ') || undefined,
+    address: order.direccion_envio || undefined,
+    address_city: order.direccion_distrito || order.direccion_provincia || undefined,
+    country_code: 'PE',
+  };
+};
+
+// Billetera digital, PagoEfectivo y Cuotéalo usan el producto "Órdenes de
+// Pago" de Culqi, no el de cargos: hay que crear (y confirmar) la orden en
+// Culqi para que el checkout pueda mostrarla, y guardar su id en Pago para
+// que el webhook asíncrono la pueda encontrar. Los tres comparten esta misma
+// creación de orden; lo único que cambia es qué botón ve el cliente en el
+// checkout (eso lo decide el frontend al abrir el widget).
+const ORDER_METODOS = ['billetera_digital', 'pago_efectivo', 'cuotealo'];
+const setUpCulqiOrder = async order => {
+  const key = `order-${order.id_pedido}-culqi`;
+  const [firstName, ...rest] = String(order.cliente_nombre || '').trim().split(/\s+/).filter(Boolean);
+  const culqiOrder = await culqiOrders.createOrder({
+    amount: Math.round(Number(order.total_final) * 100),
+    orderNumber: order.numero_pedido,
+    email: order.cliente_email,
+    firstName: firstName || 'Cliente',
+    lastName: rest.join(' ') || '-',
+    phone: order.cliente_telefono,
+  });
+  const existing = await Pago.findOne({ where: { idempotency_key: key } });
+  if (existing) {
+    await existing.update({ proveedor_id: culqiOrder.id, estado: 'creado', respuesta_segura: culqiOrders.sanitizeOrder(culqiOrder) });
+  } else {
+    await Pago.create({
+      id_pedido: order.id_pedido,
+      proveedor: 'culqi',
+      idempotency_key: key,
+      proveedor_id: culqiOrder.id,
+      monto_centimos: Math.round(Number(order.total_final) * 100),
+      moneda: 'PEN',
+      respuesta_segura: culqiOrders.sanitizeOrder(culqiOrder),
+    });
+  }
+  return culqiOrder;
 };
 
 exports.create = async (req, res) => {
@@ -60,7 +113,7 @@ exports.create = async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.cliente_email).trim())) throw new Error('Correo electrónico inválido');
     if (!/^\+?[0-9\s-]{7,20}$/.test(String(body.cliente_telefono).trim())) throw new Error('Teléfono inválido');
     if (!['domicilio', 'recojo_tienda'].includes(body.tipo_entrega)) throw new Error('Tipo de entrega inválido');
-    if (!['yape', 'plin', 'transferencia', 'tarjeta', 'contraentrega'].includes(body.metodo_pago)) throw new Error('Método de pago inválido');
+    if (!['yape', 'billetera_digital', 'pago_efectivo', 'cuotealo', 'transferencia', 'tarjeta', 'contraentrega'].includes(body.metodo_pago)) throw new Error('Método de pago inválido');
     const type = body.tipo_comprobante || (body.requiere_factura ? 'factura' : 'boleta');
     if (!['boleta', 'factura'].includes(type)) throw new Error('Las compras web requieren boleta o factura');
     if (type === 'factura' && (body.cliente_documento_tipo !== 'RUC' || !/^\d{11}$/.test(body.cliente_documento_numero || ''))) {
@@ -79,7 +132,9 @@ exports.create = async (req, res) => {
     for (const [productId, quantity] of requestedTotals) {
       const product = await Producto.scope('allBusinesses').findByPk(productId, { transaction, lock: transaction.LOCK.SHARE });
       if (!product) throw new Error('Producto no disponible');
-      if (product.stock < quantity) throw new Error(`Stock insuficiente para ${product.nombre}`);
+      // Disponible = stock físico - reservado por otros pedidos web pagados y
+      // aún no entregados (no se han descontado de verdad, pero ya están comprometidos).
+      if (Number(product.stock) - Number(product.stock_reservado) < quantity) throw new Error(`Stock insuficiente para ${product.nombre}`);
       const price = Number(product.es_oferta && product.precio_oferta_con_igv ? product.precio_oferta_con_igv : product.precio_unitario_con_igv);
       normalized.push({ product, quantity, price, subtotal: price * quantity });
     }
@@ -92,6 +147,23 @@ exports.create = async (req, res) => {
       throw new Error('El delivery requiere departamento, provincia, distrito y dirección');
     }
     const shipping = (await shippingQuote.quote(body)).amount;
+    const totalFinal = subtotal + shipping + cardSurcharge;
+    // Yape vía Culqi ("cargo único") acepta hasta S/2,000 por pago; por encima
+    // de eso Culqi lo rechazaría, así que lo bloqueamos antes de crear el pedido.
+    if (body.metodo_pago === 'yape' && totalFinal > 2000) {
+      throw new Error('Yape acepta compras de hasta S/2,000. Elige tarjeta, billetera digital u otro método para este monto.');
+    }
+    // Billetera digital usa "Órdenes de Pago" de Culqi: el mínimo de S/6 lo
+    // impone la API de Culqi (confirmado directamente); el máximo de S/500 no
+    // lo impone Culqi, es el límite práctico de las apps de Yape/Plin para QR.
+    if (body.metodo_pago === 'billetera_digital' && (totalFinal < 6 || totalFinal > 500)) {
+      throw new Error('Billetera digital acepta compras entre S/6 y S/500. Elige tarjeta, Yape u otro método para este monto.');
+    }
+    // Cuotéalo (financiamiento BCP) acepta entre S/100 y S/50,000 según el
+    // manual de Culqi; la API de Órdenes sí acepta montos altos sin rechazarlos.
+    if (body.metodo_pago === 'cuotealo' && (totalFinal < 100 || totalFinal > 50000)) {
+      throw new Error('Cuotéalo acepta compras entre S/100 y S/50,000. Elige otro método para este monto.');
+    }
     const user = optionalUser(req);
     const number = `CG-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
     const paymentToken = crypto.randomBytes(24).toString('base64url');
@@ -116,7 +188,7 @@ exports.create = async (req, res) => {
       subtotal,
       costo_envio: shipping,
       recargo_tarjeta: cardSurcharge,
-      total_final: subtotal + shipping + cardSurcharge,
+      total_final: totalFinal,
       notas_cliente: body.notas_cliente || null,
     }, { transaction });
     await PedidoDetalle.bulkCreate(normalized.map(({ product, quantity, price, subtotal: line }) => ({
@@ -135,7 +207,29 @@ exports.create = async (req, res) => {
     })), { transaction });
     await transaction.commit();
     const createdOrder = await Pedido.findByPk(order.id_pedido, { include: orderInclude });
-    res.status(201).json({ success: true, pedido: safeOrder(createdOrder), payment_token: paymentToken, culqi_public_key: await culqi.publicKey(), payment_required: body.metodo_pago === 'tarjeta' });
+
+    let culqiOrderId = null;
+    let billeteraSetupError = null;
+    if (ORDER_METODOS.includes(body.metodo_pago)) {
+      try {
+        const culqiOrder = await setUpCulqiOrder(createdOrder);
+        culqiOrderId = culqiOrder.id;
+      } catch (setupError) {
+        // El pedido ya quedó creado; el cliente puede reintentar desde
+        // "Mis pedidos" (reissuePaymentToken vuelve a crear la orden Culqi).
+        billeteraSetupError = setupError.response?.data?.merchant_message || setupError.message;
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      pedido: safeOrder(createdOrder),
+      payment_token: paymentToken,
+      culqi_public_key: await culqi.publicKey(),
+      culqi_order_id: culqiOrderId,
+      payment_required: body.metodo_pago === 'tarjeta' || body.metodo_pago === 'yape' || Boolean(culqiOrderId),
+      billetera_setup_error: billeteraSetupError,
+    });
   } catch (error) {
     await transaction.rollback();
     res.status(400).json({ success: false, message: error.message });
@@ -163,7 +257,7 @@ exports.payWithCulqi = async (req, res) => {
 
     charge = payment.proveedor_id
       ? await culqi.retrieveCharge(payment.proveedor_id)
-      : await culqi.createCharge({ token: req.body.token, amount: payment.monto_centimos, email: order.cliente_email, orderNumber: order.numero_pedido, idempotencyKey: key });
+      : await culqi.createCharge({ token: req.body.token, amount: payment.monto_centimos, email: order.cliente_email, orderNumber: order.numero_pedido, idempotencyKey: key, antifraudDetails: antifraudDetailsFor(order) });
 
     const validCharge = charge.outcome?.type === 'venta_exitosa' && Number(charge.amount) === Number(payment.monto_centimos);
     if (!validCharge) throw new Error('El cargo Culqi no coincide con el pedido');
@@ -171,7 +265,7 @@ exports.payWithCulqi = async (req, res) => {
     finalization = await sequelize.transaction();
     const lockedPayment = await Pago.findByPk(payment.id_pago, { transaction: finalization, lock: finalization.LOCK.UPDATE });
     await lockedPayment.update({ proveedor_id: charge.id, respuesta_segura: culqi.sanitizeCharge(charge) }, { transaction: finalization });
-    await finalizePaidOrder(order.id_pedido, finalization);
+    await finalizePaidOrder(order.id_pedido, finalization, { pasarela_pago: 'culqi' });
     await lockedPayment.update({ estado: 'pagado' }, { transaction: finalization });
     await finalization.commit();
     res.json({ success: true, numero_pedido: order.numero_pedido, charge: culqi.sanitizeCharge(charge) });
@@ -258,16 +352,54 @@ exports.updateStatus = async (req, res) => {
     const allowed = ['pendiente_pago', 'confirmado', 'preparando', 'enviado', 'entregado', 'cancelado'];
     const status = String(req.body.estado || '');
     if (!allowed.includes(status)) return res.status(422).json({ success: false, message: 'Estado de pedido inválido' });
-    const order = await Pedido.findByPk(req.params.id);
-    if (!order) return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
-    if (status === 'entregado' && order.estado_pago !== 'pagado') {
+    const preview = await Pedido.findByPk(req.params.id);
+    if (!preview) return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
+    if (status === 'entregado' && preview.estado_pago !== 'pagado') {
       return res.status(400).json({ success: false, message: 'No se puede entregar un pedido con pago pendiente' });
     }
-    if (status === 'cancelado' && order.estado_pago !== 'pagado' && !order.venta_id) {
-      await sequelize.transaction(transaction => deleteUnpaidOrder(order.id_pedido, transaction));
+    if (status === 'cancelado' && preview.estado_pago !== 'pagado' && !preview.venta_id) {
+      await sequelize.transaction(transaction => deleteUnpaidOrder(preview.id_pedido, transaction));
       return res.json({ success: true, deleted: true, message: 'Pedido impago cancelado y eliminado' });
     }
-    await order.update({ estado: status });
+
+    let order;
+    await sequelize.transaction(async (transaction) => {
+      // Se vuelve a leer y bloquear aquí (no arriba) para decidir sobre el
+      // estado real en el momento del cambio, no uno ya desactualizado si dos
+      // solicitudes llegan casi juntas (ej. dos clics en "Entregado").
+      order = await Pedido.findByPk(req.params.id, { include: orderInclude, transaction, lock: transaction.LOCK.UPDATE });
+      if (!order) throw new Error('Pedido no encontrado');
+
+      // Solo aquí se descuenta stock físico de verdad para un pedido web — al
+      // pagar solo se reserva (order-finalization.service.js). Si se cancela
+      // antes de entregar, se libera la reserva sin tocar stock físico, porque
+      // nunca salió nada. Nunca se repite: depende del estado real bloqueado.
+      const entregaAhora = status === 'entregado' && order.estado !== 'entregado';
+      const liberaPorCancelacion = status === 'cancelado' && order.estado_pago === 'pagado'
+        && order.estado !== 'entregado' && order.estado !== 'cancelado';
+
+      if (entregaAhora || liberaPorCancelacion) {
+        for (const detalle of order.detalles) {
+          if (!detalle.producto_id) continue; // líneas de servicio (envío, etc.) no mueven stock
+          const base = {
+            productoId: detalle.producto_id,
+            referenciaTipo: 'pedido_web',
+            referenciaId: order.id_pedido,
+            usuarioId: req.user?.id || null,
+            affiliateBusinessId: detalle.affiliate_business_id || null,
+            transaction,
+          };
+          if (entregaAhora) {
+            await aplicarMovimiento({ ...base, delta: -detalle.cantidad, tipo: 'venta', motivo: `Pedido web ${order.numero_pedido}: entregado` });
+            await ajustarReserva({ ...base, delta: -detalle.cantidad, tipo: 'liberacion', motivo: `Pedido web ${order.numero_pedido}: reserva consumida al entregar` });
+          } else {
+            await ajustarReserva({ ...base, delta: -detalle.cantidad, tipo: 'liberacion', motivo: `Pedido web ${order.numero_pedido}: cancelado antes de entregar, se libera la reserva` });
+          }
+        }
+      }
+      await order.update({ estado: status }, { transaction });
+    });
+
     return res.json({ success: true, pedido: safeOrder(order) });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
@@ -306,11 +438,23 @@ exports.reissuePaymentToken = async (req, res) => {
   if (!order) return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
   const userId = user.id_user || user.id;
   if (order.id_usuario !== userId) return res.status(403).json({ success: false, message: 'Sin acceso al pedido' });
-  if (order.metodo_pago !== 'tarjeta') return res.status(400).json({ success: false, message: 'Este pedido no se paga con tarjeta' });
+  if (!['tarjeta', 'yape', ...ORDER_METODOS].includes(order.metodo_pago)) {
+    return res.status(400).json({ success: false, message: 'Este pedido no se paga por Culqi' });
+  }
   if (order.estado_pago === 'pagado') return res.status(400).json({ success: false, message: 'El pedido ya está pagado' });
   const paymentToken = crypto.randomBytes(24).toString('base64url');
   await order.update({ payment_token_hash: hashPaymentToken(paymentToken) });
-  res.json({ success: true, payment_token: paymentToken, culqi_public_key: await culqi.publicKey(), pedido: safeOrder(order) });
+
+  let culqiOrderId = null;
+  if (ORDER_METODOS.includes(order.metodo_pago)) {
+    try {
+      const culqiOrder = await setUpCulqiOrder(order);
+      culqiOrderId = culqiOrder.id;
+    } catch (setupError) {
+      return res.status(502).json({ success: false, message: setupError.response?.data?.merchant_message || setupError.message });
+    }
+  }
+  res.json({ success: true, payment_token: paymentToken, culqi_public_key: await culqi.publicKey(), culqi_order_id: culqiOrderId, pedido: safeOrder(order) });
 };
 
 exports.getById = async (req, res) => {
@@ -344,17 +488,60 @@ exports.confirmManualPayment = async (req, res) => {
     }
     if (order.estado_pago !== 'pagado') {
       await Pago.create({ id_pedido: order.id_pedido, proveedor: 'manual', idempotency_key: `order-${order.id_pedido}-manual`, monto_centimos: Math.round(Number(order.total_final) * 100), estado: 'pagado', respuesta_segura: { confirmed_by: req.user.id_user, reference: req.body.referencia || null } }, { transaction });
-      await finalizePaidOrder(order.id_pedido, transaction);
+      await finalizePaidOrder(order.id_pedido, transaction, { pasarela_pago: 'manual' });
     }
     await transaction.commit();
     res.json({ success: true });
   } catch (error) { await transaction.rollback(); res.status(400).json({ success: false, message: error.message }); }
 };
 
-exports.webhook = async (req, res) => {
-  const object = req.body?.data?.object || req.body?.object;
-  if (!object?.id) return res.status(202).json({ received: true });
-  if (!await culqi.isConfigured()) return res.status(503).json({ received: false });
+const findPaymentForWebhook = async (verifiedId, orderNumber, transaction) => {
+  let payment = await Pago.findOne({ where: { proveedor_id: verifiedId }, transaction, lock: transaction.LOCK.UPDATE });
+  if (!payment && orderNumber) {
+    const metadataOrder = await Pedido.findOne({ where: { numero_pedido: orderNumber }, transaction, lock: transaction.LOCK.UPDATE });
+    if (metadataOrder) payment = await Pago.findOne({ where: { id_pedido: metadataOrder.id_pedido, proveedor: 'culqi' }, transaction, lock: transaction.LOCK.UPDATE });
+  }
+  return payment;
+};
+
+// Billetera digital (Plin, Yape u otra billetera por QR): Culqi notifica el
+// cambio de estado de la Orden por el evento order.status.changed. Igual que
+// con los cargos, el body del webhook es solo una notificación: se vuelve a
+// pedir la orden autoritativa a la API antes de confiar en nada.
+const handleOrderWebhook = async (object, res) => {
+  let transaction;
+  try {
+    const verified = await culqiOrders.retrieveOrder(object.id);
+    const orderNumber = verified.order_number || verified.metadata?.order_number;
+    transaction = await sequelize.transaction();
+    const payment = await findPaymentForWebhook(verified.id, orderNumber, transaction);
+    if (!payment) { await transaction.rollback(); return res.status(202).json({ received: true }); }
+    const localOrder = await Pedido.findByPk(payment.id_pedido, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!culqiOrders.isOrderPaid(verified)) {
+      // Aún no está pagada (p. ej. "pending") o expiró: no es un error, solo
+      // todavía no hay nada que confirmar.
+      await payment.update({ respuesta_segura: culqiOrders.sanitizeOrder(verified) }, { transaction });
+      await transaction.commit();
+      return res.json({ received: true });
+    }
+    const validOrder = Number(verified.amount) === Number(payment.monto_centimos)
+      && verified.currency_code === payment.moneda
+      && orderNumber === localOrder?.numero_pedido;
+    if (!validOrder) throw new Error('El evento de orden Culqi no coincide con el pedido');
+    if (payment.estado !== 'pagado' || !localOrder.venta_id) {
+      await payment.update({ proveedor_id: verified.id, respuesta_segura: culqiOrders.sanitizeOrder(verified) }, { transaction });
+      await finalizePaidOrder(payment.id_pedido, transaction, { pasarela_pago: 'culqi' });
+      await payment.update({ estado: 'pagado' }, { transaction });
+    }
+    await transaction.commit();
+    res.json({ received: true });
+  } catch (_error) {
+    if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});
+    res.status(500).json({ received: false });
+  }
+};
+
+const handleChargeWebhook = async (object, res) => {
   let transaction;
   try {
     // The webhook body is only a notification. Retrieve the authoritative
@@ -362,11 +549,7 @@ exports.webhook = async (req, res) => {
     const verified = await culqi.retrieveCharge(object.id);
     const orderNumber = verified.metadata?.order_number;
     transaction = await sequelize.transaction();
-    let payment = await Pago.findOne({ where: { proveedor_id: verified.id }, transaction, lock: transaction.LOCK.UPDATE });
-    if (!payment && orderNumber) {
-      const metadataOrder = await Pedido.findOne({ where: { numero_pedido: orderNumber }, transaction, lock: transaction.LOCK.UPDATE });
-      if (metadataOrder) payment = await Pago.findOne({ where: { id_pedido: metadataOrder.id_pedido, proveedor: 'culqi' }, transaction, lock: transaction.LOCK.UPDATE });
-    }
+    const payment = await findPaymentForWebhook(verified.id, orderNumber, transaction);
     if (!payment) { await transaction.rollback(); return res.status(202).json({ received: true }); }
     const localOrder = await Pedido.findByPk(payment.id_pedido, { transaction, lock: transaction.LOCK.UPDATE });
     const validCharge = verified.outcome?.type === 'venta_exitosa'
@@ -376,7 +559,7 @@ exports.webhook = async (req, res) => {
     if (!validCharge) throw new Error('El evento Culqi no coincide con el pedido');
     if (payment.estado !== 'pagado' || !localOrder.venta_id) {
       await payment.update({ proveedor_id: verified.id, respuesta_segura: culqi.sanitizeCharge(verified) }, { transaction });
-      await finalizePaidOrder(payment.id_pedido, transaction);
+      await finalizePaidOrder(payment.id_pedido, transaction, { pasarela_pago: 'culqi' });
       await payment.update({ estado: 'pagado' }, { transaction });
     }
     await transaction.commit();
@@ -385,4 +568,13 @@ exports.webhook = async (req, res) => {
     if (transaction && !transaction.finished) await transaction.rollback().catch(() => {});
     res.status(500).json({ received: false });
   }
+};
+
+exports.webhook = async (req, res) => {
+  const object = req.body?.data?.object || req.body?.object;
+  if (!object?.id) return res.status(202).json({ received: true });
+  if (!await culqi.isConfigured()) return res.status(503).json({ received: false });
+  const isOrderEvent = object.object === 'order' || /^ord_/.test(String(object.id));
+  if (isOrderEvent) return handleOrderWebhook(object, res);
+  return handleChargeWebhook(object, res);
 };

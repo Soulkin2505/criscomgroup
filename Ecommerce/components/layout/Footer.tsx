@@ -3,7 +3,7 @@
 // Footer global (port criscom-ecom-home): 4 columnas (marca / Comprar / Ayuda / Legales),
 // redes y WhatsApp siempre config-driven (si el dato no llega, no se muestra). Sin emojis.
 import Link from "next/link"
-import { ChevronDown, Clock, MapPin } from "lucide-react"
+import { ChevronDown, Clock, Mail, MapPin } from "lucide-react"
 import { useConfigPublica } from "@/hooks/useSocialLinks"
 import { waHref } from "@/components/home/homeShared"
 
@@ -82,6 +82,8 @@ const Footer = () => {
   const nombre = config?.nombre_comercial || "Criscom Group"
   const horario = config?.horario
   const waUrl = waHref(config?.whatsapp_number)
+  const ruc = config?.ruc
+  const correo = config?.correo
 
   const redes = (
     [
@@ -99,10 +101,17 @@ const Footer = () => {
         <img className="logo-d" src="/logo-dark.png" alt="" width="196" height="38" />
       </Link>
       <p><b>{nombre}</b></p>
+      {ruc && <p><span>RUC {ruc}</span></p>}
       {config?.direccion && (
         <p>
           <MapPin style={{ width: 16, height: 16 }} aria-hidden />
           <span>{config.direccion}</span>
+        </p>
+      )}
+      {correo && (
+        <p>
+          <Mail style={{ width: 16, height: 16 }} aria-hidden />
+          <a href={`mailto:${correo}`}>{correo}</a>
         </p>
       )}
       {horario?.inicio && horario?.fin && (

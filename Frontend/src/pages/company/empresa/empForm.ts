@@ -12,27 +12,27 @@ export interface EmpDraft {
   client_secret: string
   logo: File | null
   cert: File | null
+  /** Contrasena del .p12/.pfx: solo se envia junto al archivo para abrirlo; el servidor no la guarda. */
+  cert_password: string
   rucDemo: boolean
 }
 
-export type EmpField = "razon_social" | "ruc" | "direccion" | "client_id" | "sol_user" | "sol_pass" | "client_secret" | "logo" | "cert"
-export type EmpSec = "ident" | "logo" | "ficha" | "sol" | "cert" | "api"
-export type EmpFlag = "err" | "chg"
+export type EmpField = "razon_social" | "ruc" | "direccion" | "client_id" | "sol_user" | "sol_pass" | "client_secret" | "logo" | "cert" | "cert_password"
+
+/** Certificado PKCS#12 (.p12/.pfx): necesita contrasena para abrirse. */
+export const isPkcs12 = (f: File | null) => !!f && /\.(p12|pfx)$/i.test(f.name)
 
 export const EMPTY_DRAFT: EmpDraft = {
-  razon_social: "", ruc: "", direccion: "", client_id: "", sol_user: "", sol_pass: "", client_secret: "", logo: null, cert: null, rucDemo: false,
+  razon_social: "", ruc: "", direccion: "", client_id: "", sol_user: "", sol_pass: "", client_secret: "", logo: null, cert: null, cert_password: "", rucDemo: false,
 }
 
 export const draftFrom = (c: Company | null): EmpDraft => c
   ? { ...EMPTY_DRAFT, razon_social: c.razon_social, ruc: c.ruc, direccion: c.direccion, client_id: c.client_id ?? "" }
   : EMPTY_DRAFT
 
-export const FIELD_SEC: Record<EmpField, EmpSec> = {
-  razon_social: "ident", ruc: "ident", direccion: "ident", logo: "logo", sol_user: "sol", sol_pass: "sol", cert: "cert", client_id: "api", client_secret: "api",
-}
 const NAMES: Record<EmpField, string> = {
   razon_social: "Razón social", ruc: "RUC", direccion: "Dirección", client_id: "Client ID", sol_user: "Usuario SOL", sol_pass: "Clave SOL",
-  client_secret: "Client secret", logo: "Logo", cert: "Certificado",
+  client_secret: "Client secret", logo: "Logo", cert: "Certificado", cert_password: "Contraseña del certificado",
 }
 export const fieldName = (f: EmpField) => NAMES[f]
 
@@ -75,6 +75,7 @@ export function validate(d: EmpDraft, base: Company | null, all: boolean): EmpEr
     if (!d.sol_pass) e.sol_pass = "La clave SOL es obligatoria."
     if (!d.cert) e.cert = "El certificado digital es obligatorio para registrar la empresa."
   }
+  if (all && isPkcs12(d.cert) && !d.cert_password) e.cert_password = "Escribe la contraseña que pusiste al crear el certificado."
   return e
 }
 
@@ -91,17 +92,6 @@ export function buildBody(d: EmpDraft): FormData {
   if (rucCheck(d.ruc) === "dv" && d.rucDemo) f.append("ruc_demo", "true")
   if (d.logo) f.append("logo", d.logo)
   if (d.cert) f.append("cert", d.cert)
+  if (isPkcs12(d.cert) && d.cert_password) f.append("cert_password", d.cert_password)
   return f
 }
-
-/** Banderas por seccion para el menu lateral. */
-export function sectionFlags(changed: EmpField[], errs: EmpErrors): Partial<Record<EmpSec, EmpFlag>> {
-  const out: Partial<Record<EmpSec, EmpFlag>> = {}
-  changed.forEach(f => { out[FIELD_SEC[f]] = "chg" })
-  ;(Object.keys(errs) as EmpField[]).forEach(f => { if (errs[f]) out[FIELD_SEC[f]] = "err" })
-  return out
-}
-
-export const EMP_SECS: [EmpSec, string][] = [
-  ["ident", "Identidad fiscal"], ["logo", "Logo"], ["ficha", "Ficha RUC"], ["sol", "Acceso SOL"], ["cert", "Certificado digital"], ["api", "API SUNAT"],
-]

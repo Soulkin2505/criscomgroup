@@ -74,14 +74,12 @@ const fileFilter = (req, file, cb) => {
     if (file.mimetype === "application/pdf" || file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("La ficha RUC debe ser PDF o imagen"));
   } else if (file.fieldname === "cert") {
-    if (
-      file.mimetype === "application/x-pem-file" ||
-      file.mimetype === "text/plain" ||
-      file.mimetype === "application/x-x509-ca-cert"
-    ) {
+    // Por extension, no por MIME: Windows no registra MIME para .pem ni .p12 (llegan vacios u
+    // octet-stream). El contenido real (PEM o PKCS#12) lo valida company.controller.
+    if (/\.(pem|txt|crt|cer|cert|p12|pfx)$/i.test(file.originalname || "")) {
       cb(null, true);
     } else {
-      cb(new Error("Solo se permiten archivos pem o txt para el certificado"));
+      cb(new Error("El certificado debe ser un archivo .pem, .txt, .crt, .cer, .cert, .p12 o .pfx"));
     }
   } else if (file.fieldname === "imagen") {
     if (file.mimetype.startsWith("image/")) {

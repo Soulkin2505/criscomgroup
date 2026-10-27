@@ -2,7 +2,6 @@
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
 const authMiddleware = require('../middlewares/auth.middleware');
 const { verificarRolesSinHorario } = require('../middlewares/restricciones.middleware');
@@ -13,12 +12,12 @@ const culqi = require('../services/culqi.service');
 const gatewayService = require('../services/payment-gateway.service');
 const businessHours = require('../services/business-hours.service');
 const upload = require('../middlewares/upload.middleware');
+const { RUC_DIR, markerFor, readSheet } = require('../services/ruc-sheet.service');
 const {
   createCompany, updateCompanyPatch, updateCompanyPut, getCompanies, getCompanyByRuc,
-  deleteCompanyByRuc, getCompanyForSales, fail, safe, ORDER,
+  deleteCompanyByRuc, getCompanyForSales, setPublicCompany, fail, safe, ORDER,
 } = require('../controllers/company.controller');
 
-const RUC_DIR = path.resolve(__dirname, '../uploads/private/ruc');
 const SHEET_MIMES = ['application/pdf', 'image/jpeg', 'image/png'];
 const SHEET_MAX = 5 * 1024 * 1024;
 
@@ -83,18 +82,24 @@ router.patch('/settings/business-hours', verificarRolesSinHorario([1]), registra
 // ---- Estado de integraciones (SUNAT para rol 2 / empresa_sunat; Culqi solo con acceso a pagos) ----
 router.get('/settings/integrations', verificarRolesSinHorario([1, 2], 'empresa_sunat'), safe(async (req, res) => {
   const company = await defaultCompany();
-  const info = sunat.sunatModeInfo();
+  if (company) await sunat.activateIfReady(company);
+  const modo = sunat.companyMode(company);
   const ready = sunat.readiness(company);
   const body = {
     sunat: {
-      mode: info.mode,
-      mode_valid: info.valid,
-      warning: info.warning,
+      mode: modo.mode,
+      mode_valid: modo.servidor_valido,
+      warning: modo.aviso_servidor,
+      motivo: modo.motivo,
+      pendientes: modo.pendientes,
+      pruebas_manual: Boolean(company?.sunat_pruebas_manual),
+      produccion_desde: company?.sunat_produccion_desde || null,
+      servidor: modo.servidor,
       credentials: ready.sol,
       certificate: ready.certificate,
       credentials_source: ready.sol_source,
       certificate_source: ready.certificate_source,
-      connected: ready.sol && (ready.certificate || info.mode !== 'production'),
+      connected: ready.sol && (ready.certificate || modo.mode !== 'production'),
     },
     culqi: null,
   };
@@ -113,18 +118,28 @@ router.get('/settings/integrations', verificarRolesSinHorario([1, 2], 'empresa_s
   res.json(body);
 }, 'integraciones'));
 
-// ---- Ficha RUC (una por empresa; solo rol 1; PDF/JPG/PNG hasta 5 MB) ----
-const markerFor = company => path.join(RUC_DIR, `company-${company.id_company}.json`);
-const readSheet = company => {
-  for (const file of [markerFor(company), path.join(RUC_DIR, 'current.json')]) {
-    try {
-      if (!fs.existsSync(file)) continue;
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (data.path && fs.existsSync(data.path)) return { ...data, marker: file };
-    } catch (error) { console.warn('[company] ficha RUC ilegible:', error.message); }
+// ---- Modo pruebas manual (solo rol 1, auditado). Cada cambio exige escribir la palabra de confirmacion ----
+const normalizeWord = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
+router.patch('/settings/sunat-mode', verificarRolesSinHorario([1]), registrarAuditoria('actualizar', 'modo_sunat'), safe(async (req, res) => {
+  const pruebas = req.body?.pruebas;
+  if (typeof pruebas !== 'boolean') return fail(res, 422, 'Indica pruebas: true o false');
+  const company = await defaultCompany();
+  if (!company) return fail(res, 404, 'Primero debes registrar una empresa');
+  const word = pruebas ? 'PRUEBAS' : 'PRODUCCION';
+  if (normalizeWord(req.body.confirmacion) !== word) {
+    const consecuencia = pruebas
+      ? 'Activar el modo pruebas deja de enviar los comprobantes a SUNAT: las ventas que factures no tendrán validez legal.'
+      : 'Desactivar el modo pruebas vuelve a enviar los comprobantes a SUNAT con validez legal.';
+    return fail(res, 409, `${consecuencia} Escribe ${pruebas ? 'PRUEBAS' : 'PRODUCCIÓN'} para confirmar.`, { requiere_confirmacion: true, confirmacion_esperada: pruebas ? 'PRUEBAS' : 'PRODUCCIÓN' });
   }
-  return null;
-};
+  await company.update({ sunat_pruebas_manual: pruebas });
+  if (!pruebas) await sunat.activateIfReady(company);
+  await company.reload();
+  const modo = sunat.companyMode(company);
+  res.json({ mode: modo.mode, motivo: modo.motivo, pendientes: modo.pendientes, pruebas_manual: company.sunat_pruebas_manual, produccion_desde: company.sunat_produccion_desde });
+}, 'modo-sunat'));
+
+// ---- Ficha RUC (una por empresa; solo rol 1; PDF/JPG/PNG hasta 5 MB) ----
 const sheetInfo = sheet => (sheet
   ? { uploaded: true, original_name: sheet.original_name, updated_at: sheet.updated_at, size: sheet.size || null, mime: sheet.mime || null }
   : { uploaded: false });
@@ -163,6 +178,8 @@ router.post('/settings/ruc-sheet', verificarRolesSinHorario([1]), jsonUpload(upl
   const record = { path: file.path, original_name: file.originalname, mime: file.mimetype, size: file.size, updated_at: new Date().toISOString() };
   fs.writeFileSync(markerFor(company), JSON.stringify(record));
   if (previous && previous.path !== file.path) try { fs.rmSync(previous.path, { force: true }); } catch { /* sin accion */ }
+  // La ficha es el ultimo requisito: con SOL y certificado listos, la empresa pasa sola a produccion.
+  await sunat.activateIfReady(company);
   res.json(sheetInfo(record));
 }, 'ficha-subir'));
 router.delete('/settings/ruc-sheet', verificarRolesSinHorario([1]), registrarAuditoria('eliminar', 'ficha_ruc'), safe(async (_req, res) => {
@@ -179,6 +196,7 @@ router.get('/:ruc', verificarRolesSinHorario([1, 2, 3]), getCompanyByRuc);
 router.post('/', verificarRolesSinHorario([1]), companyFiles, registrarAuditoria('crear', 'empresas'), createCompany);
 router.put('/:id', verificarRolesSinHorario([1]), companyFiles, capturarEstadoOriginal(Company), registrarAuditoria('actualizar', 'empresas'), updateCompanyPut);
 router.patch('/:id', verificarRolesSinHorario([1]), companyFiles, capturarEstadoOriginal(Company), registrarAuditoria('actualizar', 'empresas'), updateCompanyPatch);
+router.patch('/:id/mostrar-en-web', verificarRolesSinHorario([1]), capturarEstadoOriginal(Company), registrarAuditoria('actualizar', 'empresas'), setPublicCompany);
 router.delete('/:ruc', verificarRolesSinHorario([1]), registrarAuditoria('eliminar', 'empresas'), deleteCompanyByRuc);
 
 module.exports = router;

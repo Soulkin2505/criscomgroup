@@ -14,6 +14,13 @@ router.use(verificarRolesSinHorario([1, 2, 3]))
 // Rutas de cierre de caja
 router.post("/", verificarHorarioLaboral, registrarAuditoria("crear", "cierres_caja"), cierreCajaController.create)
 router.get("/", cierreCajaController.getAll)
+router.get("/resumen-diario", async (req, res) => {
+  try {
+    const { dailyResult } = require('../services/daily-result.service');
+    const { limaDay } = require('../services/cash-ledger.service');
+    res.json(await dailyResult(req.user, String(req.query.fecha || limaDay(new Date()))));
+  } catch (error) { res.status(400).json({ message: error.message }); }
+})
 router.get("/rango-fechas", cierreCajaController.getByDateRange)
 router.get("/cajero/:cajero_id", cierreCajaController.getByCajero)
 router.get("/:id", cierreCajaController.getById)

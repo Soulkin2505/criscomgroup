@@ -67,6 +67,9 @@
 .pg-checkout .rc:has(input:checked) .dot { border-color: var(--secondary); }
 .pg-checkout .rc:has(input:checked) .dot::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--secondary); }
 .pg-checkout .rc:has(input:focus-visible) { outline: 3px solid var(--ring); outline-offset: 2px; }
+.pg-checkout .rc-disabled { cursor: not-allowed; opacity: 0.55; }
+.pg-checkout .rc-disabled:hover { background: var(--card); }
+.pg-checkout .rc-disabled input { cursor: not-allowed; }
 .pg-checkout .note { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); font-size: 14px; line-height: 1.45; }
 .pg-checkout .note .ck-ic { margin-top: 1px; color: var(--primary); width: 18px; height: 18px; }
 

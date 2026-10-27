@@ -3,12 +3,13 @@ const controller = require('../controllers/pedido.controller');
 const auth = require('../middlewares/auth.middleware');
 const { verificarRolesSinHorario } = require('../middlewares/restricciones.middleware');
 const { registrarAuditoria, capturarEstadoOriginal } = require('../middlewares/audit.middleware');
+const { webhookLimiter } = require('../middlewares/security.middleware');
 const Pedido = require('../models/pedido.model');
 
 router.post('/', controller.create);
 router.post('/:id/pagar-culqi', controller.payWithCulqi);
 router.post('/:id/reintentar-pago', controller.reissuePaymentToken);
-router.post('/webhooks/culqi', controller.webhook);
+router.post('/webhooks/culqi', webhookLimiter, controller.webhook);
 router.get('/seguimiento/:numero', controller.track);
 router.get('/mis-pedidos', controller.mine);
 router.get('/admin/listado', auth, verificarRolesSinHorario([1, 2, 3, 5]), controller.adminList);

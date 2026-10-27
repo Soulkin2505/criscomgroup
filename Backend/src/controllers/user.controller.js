@@ -58,14 +58,20 @@ const parseLimaDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-// Fechas de respuesta: ISO con offset -05:00. Con MySQL las fechas llegan como hora de pared de Lima
-// (typeCast a texto) y Node las lee como UTC; en SQLite ya son UTC reales (ver blog.controller.js).
+// Fechas de respuesta: ISO con offset -05:00. Con MySQL las fechas leídas llegan como hora de pared de Lima
+// (typeCast a texto, "AAAA-MM-DD HH:mm:ss"); se leen como UTC explícito para no depender de la zona del
+// proceso. En SQLite ya son UTC reales (ver blog.controller.js). Un Date de JS (p. ej. recién creado y aún
+// no releído de MySQL) siempre es un instante real: se pasa a Lima.
 const limaWallClock = sequelize.getDialect() !== 'sqlite';
+const WALL_TEXT = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 const iso = (value) => {
   if (!value) return null;
-  const date = new Date(value);
+  const date = limaWallClock && typeof value === 'string' && WALL_TEXT.test(value)
+    ? new Date(`${value.replace(' ', 'T')}Z`)
+    : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  const shifted = limaWallClock ? date : new Date(date.getTime() - 5 * 3600 * 1000);
+  const wallText = limaWallClock && !(value instanceof Date);
+  const shifted = wallText ? date : new Date(date.getTime() - 5 * 3600 * 1000);
   return shifted.toISOString().replace('Z', '-05:00');
 };
 const isoFields = (row, keys) => {

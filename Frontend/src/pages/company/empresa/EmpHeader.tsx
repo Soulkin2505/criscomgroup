@@ -46,10 +46,15 @@ export function EmpHeader({ title, status, statusError, sheet, sheetError, showS
   )
 }
 
-/** Aviso ambar de SUNAT (modo invalido) con el texto del servidor. */
+/** Aviso de SUNAT: servidor fijado en pruebas, pruebas manuales o produccion pendiente de datos. */
 export function EmpModeWarning({ status }: { status: IntegrationStatus | null }) {
-  const w = status?.sunat.warning || (status && status.sunat.mode_valid === false ? "SUNAT_MODE tiene un valor inválido: se usa modo pruebas (beta)." : "")
-  return w ? <EmpNote kind="warn" icon={TriangleAlert}><strong>Modo SUNAT</strong>{w}</EmpNote> : null
+  const s = status?.sunat
+  if (!s) return null
+  const w = s.warning || (s.mode_valid === false ? "SUNAT_MODE tiene un valor inválido: se usa modo pruebas (beta)." : "")
+  if (w) return <EmpNote kind="warn" icon={TriangleAlert}><strong>Modo SUNAT</strong>{w}</EmpNote>
+  if (s.motivo === "manual") return <EmpNote kind="warn" icon={TriangleAlert}><strong>Modo pruebas activado</strong>Los comprobantes no se envían a SUNAT. Vuelve a producción en Empresa › Modo SUNAT.</EmpNote>
+  if (s.motivo === "incompleto" && s.pendientes?.length) return <EmpNote kind="inf"><strong>Modo SUNAT: pruebas</strong>Pasará a producción automáticamente al completar: {s.pendientes.join(", ")}.</EmpNote>
+  return null
 }
 
 interface TabsProps { tabs: EmpTabDef[]; current: EmpTabKey | null; onSelect: (k: EmpTabKey) => void }

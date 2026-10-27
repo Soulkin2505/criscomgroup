@@ -80,7 +80,7 @@ export function nowLimaStamp(): string {
 
 export const LIM_LOGO = "JPG, PNG o WebP · máx. 2 MB · no se admite SVG"
 export const LIM_FICHA = "PDF, JPG o PNG · máx. 5 MB"
-export const LIM_CERT = "PEM con certificado y clave privada · .pem .txt .crt .cer .cert · máx. 256 KB"
+export const LIM_CERT = ".p12 / .pfx de SUNAT con su contraseña, o PEM con certificado y clave privada · máx. 256 KB"
 export const MAX_LOGO = 2 * 1048576
 export const MAX_FICHA = 5 * 1048576
 export const MAX_CERT = 256 * 1024

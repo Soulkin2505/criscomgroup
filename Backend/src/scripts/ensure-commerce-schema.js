@@ -122,6 +122,9 @@ const { CarritoItem, PedidoVenta, Proveedor, Compra, CompraDetalle, MovimientoIn
     ultimo_costo: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
     stock_minimo: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     ubicacion: { type: DataTypes.STRING(100), allowNull: true },
+    // pedidos-web-reserva: unidades pagadas pero no entregadas todavía; no son
+    // físicamente parte del stock disponible, pero tampoco se han descontado.
+    stock_reservado: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   });
   await addMissing('users', {
     tipo_vendedor: { type: DataTypes.ENUM('fisico', 'virtual', 'afiliado'), allowNull: true },
@@ -172,6 +175,10 @@ const { CarritoItem, PedidoVenta, Proveedor, Compra, CompraDetalle, MovimientoIn
     comision_servicio: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
     neto_vendedor: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
     affiliate_business_id: { type: DataTypes.INTEGER, allowNull: true },
+    // pedidos-web-pasarela: distingue una venta nacida de un pedido web de una
+    // de mostrador (origen_tipo) e identifica con qué pasarela se cobró
+    // ('culqi', 'manual', o el proveedor que corresponda) cuando aplica.
+    pasarela_pago: { type: DataTypes.STRING(30), allowNull: true },
   });
   await addMissing('companies', {
     tipo_ruc: { type: DataTypes.ENUM('10', '20'), allowNull: false, defaultValue: '10' },
@@ -188,6 +195,7 @@ const { CarritoItem, PedidoVenta, Proveedor, Compra, CompraDetalle, MovimientoIn
     horario_inicio: { type: DataTypes.STRING(5), allowNull: false, defaultValue: '08:50' },
     horario_fin: { type: DataTypes.STRING(5), allowNull: false, defaultValue: '21:15' },
     horario_restriccion_activa: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    mostrar_en_web: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   });
   await addMissing('banner', {
     media_type: { type: DataTypes.ENUM('image', 'video'), allowNull: false, defaultValue: 'image' },
@@ -208,6 +216,15 @@ const { CarritoItem, PedidoVenta, Proveedor, Compra, CompraDetalle, MovimientoIn
     const [[primary]] = await sequelize.query("SELECT id_company FROM companies WHERE ruc LIKE '10%' ORDER BY id_company ASC LIMIT 1");
     if (primary) {
       await sequelize.query('UPDATE companies SET facturacion_habilitada = 1, emisor_predeterminado = 1, tipo_ruc = \'10\', sunat_config_key = \'RUC10\' WHERE id_company = ?', { replacements: [primary.id_company] });
+    }
+  }
+  // Si ninguna empresa fue elegida aun para mostrarse en la web, se usa la misma por defecto
+  // que ya actua como emisor principal (para no dejar la web sin datos de contacto por omision).
+  const [[publicChosen]] = await sequelize.query('SELECT COUNT(*) AS total FROM companies WHERE mostrar_en_web = 1');
+  if (Number(publicChosen.total) === 0) {
+    const [[defaultPublic]] = await sequelize.query('SELECT id_company FROM companies ORDER BY emisor_predeterminado DESC, id_company ASC LIMIT 1');
+    if (defaultPublic) {
+      await sequelize.query('UPDATE companies SET mostrar_en_web = 1 WHERE id_company = ?', { replacements: [defaultPublic.id_company] });
     }
   }
   const qi = sequelize.getQueryInterface();

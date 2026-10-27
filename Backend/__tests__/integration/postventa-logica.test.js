@@ -137,9 +137,12 @@ describe('Postventa - logica', () => {
     const early = await put(2, id, { accion_posterior: 'nota_credito' });
     expect(early.statusCode).toBe(400);
     expect(early.body.errores).toHaveProperty('accion_posterior');
-    const aprob = await put(2, id, { estado: 'aprobada', respuesta_cliente: RESP, accion_posterior: 'reembolso', accion_posterior_nota: 'Yape seed-care', notas_admin: 'interno' });
+    // 'otra' y no 'reembolso': esta solicitud no está vinculada a un pedido
+    // real con un pago Culqi detrás, y 'reembolso' ahora intenta un reembolso
+    // de verdad (ver postventa.controller.js) — eso se prueba aparte.
+    const aprob = await put(2, id, { estado: 'aprobada', respuesta_cliente: RESP, accion_posterior: 'otra', accion_posterior_nota: 'Yape seed-care', notas_admin: 'interno' });
     expect(aprob.statusCode).toBe(200);
-    expect(aprob.body.data.accion_posterior).toBe('reembolso');
+    expect(aprob.body.data.accion_posterior).toBe('otra');
     expect((await put(2, id, { accion_posterior: 'inexistente' })).statusCode).toBe(400);
     await put(2, id, { estado: 'resuelta' });
     const noReabre = await put(2, id, { estado: 'en_revision' });

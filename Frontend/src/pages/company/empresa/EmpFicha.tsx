@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import { CircleCheck, Clock, Download, Eye, FileText, RefreshCw, Trash2, Upload } from "lucide-react"
+import { CircleCheck, Clock, Download, Eye, FileText, Lock, RefreshCw, Trash2, Upload } from "lucide-react"
 import { apiFailure, deleteRucSheet, downloadRucSheet, uploadRucSheet } from "../../../services/companyService"
 import { fmtKb, fmtStamp, LIM_FICHA, MAX_FICHA, SEP } from "./empFormat"
 import { EmpCard, EmpWhy, ic } from "./empParts"
@@ -8,22 +8,28 @@ import type { EmpFichaCtl } from "./useEmpEstado"
 const FICHA_OK = /\.(pdf|jpe?g|png)$/i
 const mimeLabel = (m?: string | null) => (m === "application/pdf" ? "PDF" : m === "image/png" ? "PNG" : m ? "JPG" : "")
 
-/** Ficha RUC: una por empresa; subir, reemplazar y eliminar se aplican al instante (sin Guardar). */
-export function EmpFicha({ ctl, alta }: { ctl: EmpFichaCtl; alta: boolean }) {
+/**
+ * Ficha RUC: ultimo paso. Se habilita solo con la empresa registrada y su certificado configurado;
+ * subir, reemplazar y eliminar se aplican al instante (sin Guardar).
+ */
+export function EmpFicha({ ctl, alta, cert }: { ctl: EmpFichaCtl; alta: boolean; cert: boolean }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState<"" | "up" | "del" | "view" | "dl">("")
   const [ask, setAsk] = useState(false)
   const [err, setErr] = useState("")
   const s = ctl.sheet
-  const help = "Se aplica al instante, sin pulsar Guardar."
+  const help = "Último paso · se aplica al instante, sin pulsar Guardar."
 
-  if (alta) {
+  if (alta || (!cert && !s.uploaded)) {
+    const why = alta
+      ? "Primero completa los datos, el acceso SOL y el certificado digital, y pulsa «Registrar empresa»."
+      : "Primero sube el certificado digital y pulsa «Guardar cambios»."
     return (
       <EmpCard sec="ficha" title="Ficha RUC" help={help}>
         <div className="row">
-          <div className="box dash">{ic(FileText, 24)}</div>
-          <div className="meta"><b>Disponible tras registrar la empresa</b><span>La ficha RUC es una por empresa.</span></div>
-          <button type="button" className="btn out" aria-disabled="true">{ic(Upload, 16)}Subir ficha RUC</button>
+          <div className="box dash">{ic(Lock, 24)}</div>
+          <div className="meta"><b>Se habilita después del certificado</b><span id="emp-ficha-why">{why}</span></div>
+          <button type="button" className="btn out" disabled aria-describedby="emp-ficha-why">{ic(Upload, 16)}Subir ficha RUC</button>
         </div>
       </EmpCard>
     )

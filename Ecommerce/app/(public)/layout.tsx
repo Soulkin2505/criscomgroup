@@ -6,7 +6,7 @@ import Header from "@/components/layout/Header"
 import Footer from "@/components/layout/Footer"
 import styled from "styled-components"
 import ThemeToggle from "@/components/ThemeToggle"
-import { MessageCircle } from "lucide-react"
+import { FaWhatsapp } from "react-icons/fa"
 import { PageTransition } from "@/components/layout/PageTransition"
 import { useConfigPublica } from "@/hooks/useSocialLinks"
 import { waHref } from "@/components/home/homeShared"
@@ -61,7 +61,7 @@ export default function PublicLayout({
               rel="noopener noreferrer"
               aria-label="Contactar por WhatsApp"
             >
-              <MessageCircle aria-hidden />
+              <FaWhatsapp aria-hidden />
             </a>
           </div>
         )}

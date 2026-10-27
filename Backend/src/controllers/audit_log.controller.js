@@ -22,13 +22,16 @@ const safe = (label, handler) => async (req, res) => {
 }
 
 // La BD guarda hora de pared de Lima (timezone -05:00, dateStrings). En MySQL el valor leido ya es
-// la hora de Lima; en SQLite (tests) esta en UTC y se corrige.
+// la hora de Lima (se lee como UTC explicito para no depender de la zona del proceso); en SQLite (tests)
+// esta en UTC y se corrige. Un Date de JS siempre es un instante real y tambien se pasa a Lima.
 const lima = sequelize.getDialect() !== "sqlite"
+const WALL_TEXT = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/
 const iso = (value) => {
   if (!value) return null
-  const date = new Date(value)
+  const wallText = lima && typeof value === "string" && WALL_TEXT.test(value)
+  const date = wallText ? new Date(`${value.replace(" ", "T")}Z`) : new Date(value)
   if (Number.isNaN(date.getTime())) return null
-  const shifted = lima ? date : new Date(date.getTime() - 5 * 3600 * 1000)
+  const shifted = lima && !(value instanceof Date) ? date : new Date(date.getTime() - 5 * 3600 * 1000)
   return shifted.toISOString().replace("Z", "-05:00")
 }
 

@@ -60,9 +60,11 @@ describe('Facturación automática de Servicio Técnico', () => {
     const sale = await Venta.unscoped().findByPk(stored.venta_id);
     const lines = await DetalleVenta.findAll({ where: { venta_id: sale.venta_id } });
     const movement = await MovimientoInventario.findOne({ where: { referencia_tipo: 'orden_servicio', referencia_id: order.id_orden_servicio, tipo: 'reserva' } });
-    expect(stored.clasificacion_fiscal).toBe('boleta_factura');
+    expect(stored.clasificacion_fiscal).toBe('mixta');
+    expect(Number(sale.total_con_igv)).toBe(59);
+    expect(Number(sale.total)).toBe(50);
     expect(sale.tipo_documento).toBe('1');
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(1);
     expect(movement.stock_anterior).toBe(2);
     expect(movement.stock_nuevo).toBe(1);
   });

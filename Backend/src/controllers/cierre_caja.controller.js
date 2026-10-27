@@ -1,10 +1,8 @@
 const { CierreCaja, User, Venta } = require('../models');
 const { Op } = require('sequelize');
+const { loadReceipts } = require('../services/cash-ledger.service');
 
-// M1: los totales del cierre se calculan en el servidor desde Venta; el cliente
-// solo declara el conteo fisico (saldo_efectivo). pago_link/metodos mixtos
-// ('a+b' de ordenes de servicio) no caben en los 5 buckets: se suman aparte y
-// se anotan en observaciones para que el cuadre sea completo.
+// Una fuente de cobros: ventas directas y pagos del taller, sin duplicar su comprobante.
 const scopedModel = (req) => req.user.affiliate_business_id ? CierreCaja.unscoped() : CierreCaja;
 const accessWhere = (req, extra = {}) => req.user.affiliate_business_id
   ? { ...extra, affiliate_business_id: req.user.affiliate_business_id }
@@ -29,26 +27,13 @@ const cierreCajaController = {
         return res.status(400).json({ message: 'Cajero no válido' });
       }
 
-      // Cuadre server-side: totales reales desde Venta (los enviados por el cliente se ignoran)
-      const VentaScoped = req.user.affiliate_business_id ? Venta.unscoped() : Venta;
-      const ventas = await VentaScoped.findAll({
-        where: {
-          id_cajero: cajeroId,
-          fecha: { [Op.between]: [desde, hasta] },
-          ...(req.user.affiliate_business_id ? { affiliate_business_id: req.user.affiliate_business_id } : {}),
-        },
-        attributes: ['metodo_pago', 'total_con_igv'],
-      });
-      const totales = { efectivo: 0, tarjeta: 0, transferencia: 0, yape: 0, plin: 0 };
-      let otros = 0;
-      for (const venta of ventas) {
-        const metodo = String(venta.metodo_pago || '');
-        const monto = Number(venta.total_con_igv) || 0;
-        if (Object.prototype.hasOwnProperty.call(totales, metodo)) totales[metodo] += monto;
-        else otros += monto;
-      }
-      const notaOtros = otros > 0 ? `Métodos mixtos/otros (pago_link, combinados): S/ ${otros.toFixed(2)}` : null;
-      const observacionesFinal = [observaciones, notaOtros].filter(Boolean).join(' | ') || null;
+      const ledger = await loadReceipts({ user: req.user, desde, hasta });
+      const totales = Object.fromEntries(Object.entries(ledger.por_metodo).map(([key, value]) => [key, value.total]));
+      const otros = totales.pago_link + totales.qr + totales.otro;
+      const observacionesFinal = [observaciones, 'Caja de cobros: ventas + taller, sin duplicar comprobantes',
+        'Egresos de efectivo registrados: S/ ' + ledger.egresos_efectivo.toFixed(2),
+        otros ? 'Otros medios: S/ ' + otros.toFixed(2) : null,
+        'No incluye fondo inicial ni retiros no registrados'].filter(Boolean).join(' | ');
 
       const cierre = await CierreCaja.create({
         fecha_apertura: desde,
@@ -56,12 +41,12 @@ const cierreCajaController = {
         cajero_id: cajeroId,
         affiliate_business_id: req.user.affiliate_business_id || null,
         saldo_efectivo,
-        total_efectivo: Number(totales.efectivo.toFixed(2)),
+        total_efectivo: ledger.efectivo_neto,
         total_tarjeta: Number(totales.tarjeta.toFixed(2)),
         total_transferencia: Number(totales.transferencia.toFixed(2)),
         total_yape: Number(totales.yape.toFixed(2)),
         total_plin: Number(totales.plin.toFixed(2)),
-        cantidad_ventas: ventas.length,
+        cantidad_ventas: Object.values(ledger.por_metodo).reduce((sum, item) => sum + item.cantidad, 0),
         estado,
         observaciones: observacionesFinal
       });

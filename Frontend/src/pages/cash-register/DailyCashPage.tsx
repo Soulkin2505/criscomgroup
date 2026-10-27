@@ -11,7 +11,7 @@ import { useBusinessHours } from "../../hooks/useBusinessHours"
 import { useDocumentTitle } from "../../hooks/useDocumentTitle"
 import { ErpDialog } from "../../components/erp/ErpDialog"
 import { addDays, dateTimeLima, limaDate, longDate, money, saleAmount, todayLima, weekdayOf } from "../../components/erp/format"
-import { actualizarCierreCaja, obtenerTodosLosCierresCaja, registrarCierreCaja } from "../../services/cierreCajaService"
+import { obtenerResumenDiario, actualizarCierreCaja, obtenerTodosLosCierresCaja, registrarCierreCaja } from "../../services/cierreCajaService"
 import { fetchSaleById, fetchSales, type Sale } from "../../services/saleService"
 import { fetchUserBasicInfo } from "../../services/userService"
 
@@ -22,7 +22,7 @@ const plural = (n: number, a: string, b: string) => `${n} ${n === 1 ? a : b}`
 const dow = (iso: string, short?: boolean) => { const w = DOW[new Date(`${iso}T12:00:00Z`).getUTCDay()]; return short ? w.slice(0, 3) : w }
 const pct = (v: number, t: number) => (t > 0 ? Math.round((v / t) * 1000) / 10 : 0)
 const hm = (iso: string) => dateTimeLima(iso).split(" ").slice(1).join(" ")
-const METHODS = ["efectivo", "tarjeta", "yape", "plin", "transferencia"] as const
+const METHODS = ["efectivo", "tarjeta", "yape", "plin", "transferencia", "pago_link", "qr", "otro"] as const
 
 interface Closing { id_cierre: number; fecha_apertura: string; fecha_cierre?: string | null; cajero_id: number; saldo_efectivo: string | number; total_efectivo: string | number; total_tarjeta: string | number; total_transferencia: string | number; total_yape: string | number; total_plin: string | number; cantidad_ventas: number; estado: "abierto" | "cerrado"; observaciones?: string | null }
 const n = (v: unknown) => Number(v) || 0
@@ -60,7 +60,8 @@ export default function DailyCashPage() {
   const { data: sales, isLoading: loadingSales, refetch: refetchSales } = useQuery({ queryKey: ["sales"], queryFn: fetchSales })
   const { data: closings = [], refetch: refetchClosings } = useQuery({ queryKey: ["cierres-caja"], queryFn: obtenerTodosLosCierresCaja as () => Promise<Closing[]> })
 
-  const daySales = useMemo(() => (sales ?? []).filter(s => limaDate(s.fecha) === day).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()), [sales, day])
+  const { data: result, isLoading: loadingResult, isError: resultError, refetch: refetchResult } = useQuery({ queryKey: ['daily-result', day], queryFn: () => obtenerResumenDiario(day) });
+  const daySales = useMemo(() => (sales ?? []).filter(s => limaDate(s.fecha) === day && !(s as Sale & { orden_servicio_id?: number }).orden_servicio_id).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()), [sales, day])
   const closing = closings.find(c => String(c.fecha_apertura).startsWith(day)) ?? null
   const closed = closing?.estado === "cerrado"
 
@@ -74,13 +75,15 @@ export default function DailyCashPage() {
     const pm: Record<string, [number, number]> = Object.fromEntries(METHODS.map(m => [m, [0, 0]]))
     let discount = 0, nDiscount = 0
     for (const s of daySales) {
-      const m = String(s.metodo_pago).toLowerCase(); const key = pm[m] ? m : "efectivo"
+      const m = String(s.metodo_pago).toLowerCase(); const key = pm[m] ? m : "otro"
       pm[key][0] = r2(pm[key][0] + saleAmount(s)); pm[key][1] += 1
       if (s.es_descuento && s.descuento) { discount += Number(s.descuento); nDiscount += 1 }
     }
-    const total = r2(daySales.reduce((a, s) => a + saleAmount(s), 0))
-    return { pm, total, count: daySales.length, ticket: daySales.length ? r2(total / daySales.length) : null, discount: r2(discount), nDiscount, cash: pm.efectivo }
-  }, [daySales])
+    const directTotal = r2(daySales.reduce((a, s) => a + saleAmount(s), 0))
+    if (result) for (const [key, bucket] of Object.entries(result.por_metodo)) pm[key] = [bucket.total, bucket.cantidad];
+    const total = result?.cobrado ?? directTotal;
+    return { pm, total, directTotal, count: Object.values(pm).reduce((a, b) => a + b[1], 0), ticket: daySales.length ? r2(directTotal / daySales.length) : null, discount: r2(discount), nDiscount, cash: pm.efectivo }
+  }, [daySales, result])
 
   const products = useMemo(() => {
     const map = new Map<string, { p: string; u: number; t: number; may: boolean }>()
@@ -95,12 +98,12 @@ export default function DailyCashPage() {
   const cashiers = useMemo(() => cashierIds.map(id => { const own = daySales.filter(s => s.id_cajero === id); return { id, ventas: r2(own.reduce((a, s) => a + saleAmount(s), 0)), tr: own.length } }), [daySales, cashierIds])
 
   // ---- cuadre ----
-  const expected = daySales.length || !closing ? sum.cash[0] : n(closing.total_efectivo)
+  const expected = closed ? n(closing?.total_efectivo) : result?.efectivo_neto ?? 0
   const counted = closed && !editing ? n(closing?.saldo_efectivo) : raw === "" ? null : Number(raw.replace(/,/g, ""))
   const df = diff(expected, Number.isFinite(counted as number) ? counted : null)
-  const hasSales = daySales.length > 0
+  const hasSales = sum.count > 0 || (result?.egresos_efectivo ?? 0) > 0
   const offHours = role === 3 && !isWithinBusinessHours
-  const why = closed && !editing ? (offHours ? "Fuera de horario laboral: no se puede corregir el cierre" : "")
+  const why = resultError || loadingResult ? "Espera a que se cargue el resumen de caja" : closed && !editing ? (offHours ? "Fuera de horario laboral: no se puede corregir el cierre" : "")
     : offHours ? `Fuera de horario laboral · ${businessHoursMessage}` : !hasSales && !editing ? "Sin ventas: no hay nada que cerrar" : counted == null ? "Digita el efectivo contado" : ""
   const reviewObs = !closed || editing ? df.k === "up" || df.k === "dn" : false
 
@@ -111,14 +114,14 @@ export default function DailyCashPage() {
         cantidad_ventas: sum.count, estado: "cerrado", observaciones: obs || (closing?.observaciones ?? undefined), fecha_cierre: new Date().toISOString(),
       }
       if (closing) return actualizarCierreCaja(closing.id_cierre, body)
-      return registrarCierreCaja({ fecha_apertura: `${day}T00:00:00`, cajero_id: Number(user?.id) || daySales[0]?.id_cajero || 1, ...body, fecha_cierre: body.fecha_cierre, observaciones: obs || undefined })
+      return registrarCierreCaja({ fecha_apertura: `${day}T00:00:00-05:00`, cajero_id: Number(user?.id) || daySales[0]?.id_cajero || 1, ...body, fecha_cierre: `${addDays(day, 1)}T00:00:00-05:00`, observaciones: obs || undefined })
     },
     onSuccess: () => { toast.success(editing ? "Cierre corregido" : "Caja cerrada correctamente"); setConfirmOpen(false); setEditing(false); setRaw(""); setObs(""); void refetchClosings() },
     onError: () => toast.error("No se pudo registrar el cierre de caja"),
   })
 
   const goDay = (d: string) => { setDay(d); setRaw(""); setObs(""); setEditing(false) }
-  const refresh = () => { void refetchSales(); void refetchClosings(); void queryClient.invalidateQueries({ queryKey: ["sale"] }) }
+  const refresh = () => { void refetchResult(); void refetchSales(); void refetchClosings(); void queryClient.invalidateQueries({ queryKey: ["sale"] }) }
   const ro = closed && !editing
 
   const act = (() => {
@@ -140,9 +143,9 @@ export default function DailyCashPage() {
 
   const methodRow = (label: string, key: string) => {
     const [amount, count] = sum.pm[key]
-    return <li key={key} className="pm"><span className="n">{label}<span className="tag">{plural(count, "venta", "ventas")}</span></span><span className="p num">{pct(amount, sum.total)}%</span><span className="m num">{money(amount)}</span><Bar p={pct(amount, sum.total)} /></li>
+    return <li key={key} className="pm"><span className="n">{label}<span className="tag">{plural(count, "cobro", "cobros")}</span></span><span className="p num">{pct(amount, sum.total)}%</span><span className="m num">{money(amount)}</span><Bar p={pct(amount, sum.total)} /></li>
   }
-  const digital = r2(sum.pm.tarjeta[0] + sum.pm.transferencia[0] + sum.pm.yape[0] + sum.pm.plin[0])
+  const digital = r2(sum.pm.tarjeta[0] + sum.pm.transferencia[0] + sum.pm.yape[0] + sum.pm.plin[0] + sum.pm.pago_link[0] + sum.pm.qr[0] + sum.pm.otro[0])
   const unitsTotal = products.reduce((a, p) => a + p.u, 0), minU = products.filter(p => !p.may).reduce((a, p) => a + p.u, 0)
 
   const docName = (s: Sale) => (s.tipo_documento === "3" ? "Boleta" : s.tipo_documento === "1" ? "Factura" : "Nota de venta")
@@ -171,7 +174,7 @@ export default function DailyCashPage() {
   const pmCard = (
     <section className="card"><div className="ch"><h2>Por método de pago</h2></div>
       <div className="gh"><span>Efectivo</span><span>es lo que cuadra</span></div><ul className="rl">{methodRow("Efectivo", "efectivo")}</ul>
-      <div className="gh"><span>Dinero digital: tarjeta, Yape, Plin, transferencia</span><b className="num">{money(digital)}</b></div><ul className="rl">{methodRow("Tarjeta", "tarjeta")}{methodRow("Yape", "yape")}{methodRow("Plin", "plin")}{methodRow("Transferencia", "transferencia")}</ul>
+      <div className="gh"><span>Dinero digital: tarjeta, Yape, Plin, transferencia</span><b className="num">{money(digital)}</b></div><ul className="rl">{methodRow("Tarjeta", "tarjeta")}{methodRow("Yape", "yape")}{methodRow("Plin", "plin")}{methodRow("Transferencia", "transferencia")}{methodRow("Enlace de pago", "pago_link")}{methodRow("QR sin especificar", "qr")}{methodRow("Otros", "otro")}</ul>
     </section>
   )
 
@@ -182,8 +185,8 @@ export default function DailyCashPage() {
           <table className="tbl erp-only-desk"><colgroup><col style={{ width: "34%" }} /><col style={{ width: "12%" }} /><col style={{ width: "18%" }} /><col style={{ width: "18%" }} /><col style={{ width: "18%" }} /></colgroup>
             <thead><tr><th>Producto</th><th className="r">Cantidad</th><th>Tipo de venta</th><th className="r">Precio unitario</th><th className="r">Total</th></tr></thead>
             <tbody>{products.map(p => <tr key={p.p + p.may}><td><b>{p.p}</b></td><td className="r">{p.u}</td><td><span className="tag">{p.may ? "Mayorista" : "Minorista"}</span></td><td className="r">{money(p.t / p.u)}</td><td className="r"><b>{money(p.t)}</b></td></tr>)}</tbody>
-            <tfoot>{daySales.filter(s => s.es_descuento && s.descuento).map(s => <tr key={s.venta_id}><td colSpan={4}>Descuento de la venta {docNo(s)}</td><td className="r">− {money(Number(s.descuento))}</td></tr>)}<tr><td colSpan={4}>Ventas del día (suma − descuentos)</td><td className="r">{money(sum.total)}</td></tr></tfoot></table>
-          <div className="erp-only-mob">{products.map(p => <div key={p.p + p.may} className="rw nog"><span className="a">{p.p}<span className="sub">{p.u} × {money(p.t / p.u)} · {p.may ? "Mayorista" : "Minorista"}</span></span><span className="m num">{money(p.t)}</span></div>)}<div className="rw nog" style={{ borderTop: "1px solid hsl(var(--border-strong))" }}><span className="a">Ventas del día</span><span className="m num">{money(sum.total)}</span></div></div>
+            <tfoot>{daySales.filter(s => s.es_descuento && s.descuento).map(s => <tr key={s.venta_id}><td colSpan={4}>Descuento de la venta {docNo(s)}</td><td className="r">− {money(Number(s.descuento))}</td></tr>)}<tr><td colSpan={4}>Ventas directas del día</td><td className="r">{money(sum.directTotal)}</td></tr></tfoot></table>
+          <div className="erp-only-mob">{products.map(p => <div key={p.p + p.may} className="rw nog"><span className="a">{p.p}<span className="sub">{p.u} × {money(p.t / p.u)} · {p.may ? "Mayorista" : "Minorista"}</span></span><span className="m num">{money(p.t)}</span></div>)}<div className="rw nog" style={{ borderTop: "1px solid hsl(var(--border-strong))" }}><span className="a">Ventas directas del día</span><span className="m num">{money(sum.directTotal)}</span></div></div>
         </section>))
     : tab === "Cajeros" ? (
       !cashiers.length ? <section className="card p0"><div className="ch"><h2>Cajeros</h2></div><NoDetail text="Sin ventas este día." /></section> : (
@@ -233,7 +236,19 @@ export default function DailyCashPage() {
           <button type="button" className="btn out" onClick={refresh}><RefreshCw size={16} {...stroke} />Actualizar</button>
         </div>
 
-        {loadingSales ? (
+        {resultError && <p role="alert">No se pudo cargar la caja unificada. Actualiza antes de cerrar.</p>}
+        {result && <section className="card" aria-label="Resultado diario del negocio">
+          <h2>Cobros y resultado del día</h2>
+          <p>{result.alcance}. Ventas cobradas: {money(result.cobrado_ventas)} · Taller cobrado: {money(result.cobrado_taller)}</p>
+          <div style={{ overflowX: 'auto' }}><table className="tbl"><thead><tr><th>Actividad</th><th>Ingreso reconocido</th><th>Costo registrado</th><th>Margen estimado</th></tr></thead><tbody>
+            <tr><td>Productos y repuestos</td><td>{money(result.ingresos_productos)}</td><td>{money(result.costo_productos)}</td><td>{result.margen_productos === null ? 'Faltan costos' : money(result.margen_productos)}</td></tr>
+            <tr><td>Servicio y mano de obra</td><td>{money(result.ingresos_servicios)}</td><td>{money(result.costo_servicios)}</td><td>{money(result.margen_servicios)}</td></tr>
+          </tbody></table></div>
+          <p>Gastos generales: {money(result.gastos_generales)} · <strong>Resultado estimado: {result.resultado_estimado === null ? 'Pendiente de completar costos' : money(result.resultado_estimado)}</strong></p>
+          <p className="nt">{result.criterio} La mano de obra propia no tiene un sueldo imputado; registra los pagos a técnicos externos en Gastos del taller, vinculados a su orden.</p>
+          <p className="nt">Egresos de efectivo: {money(result.egresos_efectivo)}. El cuadre descuenta gastos registrados; no incluye fondo inicial ni retiros sin registrar.</p>
+        </section>}
+        {loadingSales || loadingResult ? (
           <div className="card" aria-busy="true"><div className="empty" role="status"><p>Cargando las ventas del {longDate(day)}…</p></div></div>
         ) : (
           <>
@@ -256,7 +271,7 @@ export default function DailyCashPage() {
             </section>
 
             <div className="strip" role="group" aria-label="Indicadores del día">
-              <div className="cell"><span className="r1">Ventas del día</span><span className="v num">{money(sum.total)}</span></div>
+              <div className="cell"><span className="r1">Cobros del día · ventas + taller</span><span className="v num">{money(sum.total)}</span></div>
               <div className="cell"><span className="r1">Transacciones</span><span className="v num">{sum.count}</span></div>
               <div className="cell"><span className="r1">Ticket promedio</span><span className="v num">{sum.ticket == null ? "—" : money(sum.ticket)}</span></div>
               <div className="cell"><span className="r1">Descuentos</span><span className="v num">{money(sum.discount)}</span><span className="s">{plural(sum.nDiscount, "venta con descuento", "ventas con descuento")}</span></div>

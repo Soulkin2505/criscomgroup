@@ -2,7 +2,7 @@ import api from '../lib/api'
 
 export type CategoriaGasto =
   | 'insumos' | 'herramientas' | 'repuestos_stock' | 'alquiler' | 'servicios'
-  | 'transporte' | 'limpieza' | 'software' | 'capacitacion' | 'otros'
+  | 'mano_obra_tercerizada' | 'transporte' | 'limpieza' | 'software' | 'capacitacion' | 'otros'
 
 export type ComprobanteGasto = 'ninguno' | 'boleta' | 'factura' | 'recibo' | 'otro'
 

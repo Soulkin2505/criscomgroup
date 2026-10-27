@@ -37,7 +37,7 @@ describe('Reingresos por garantía de Servicio Técnico', () => {
     fecha_entrega_real: '2026-08-05',
     garantia_dias: 30,
     garantia_inicio: '2026-08-05',
-    garantia_fin: '2026-09-04',
+    garantia_fin: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
     garantia_cobertura: 'Trabajo realizado',
     garantia_exclusiones: 'Golpes y humedad',
     creado_por: 1,

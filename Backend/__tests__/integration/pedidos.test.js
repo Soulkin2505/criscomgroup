@@ -4,6 +4,7 @@ const request = require('supertest');
 const { app } = require('../../src/app');
 const { setupTestDb } = require('../helpers/db');
 const { createUser, createProducto } = require('../helpers/seed');
+const { getAuthToken } = require('../helpers/auth');
 const { gerente } = require('../fixtures/users.fixture');
 const { Pedido, DetalleVenta, Producto, Pago, MovimientoInventario } = require('../../src/models');
 const culqi = require('../../src/services/culqi.service');
@@ -104,7 +105,7 @@ describe('Pedidos web y pagos Culqi', () => {
     expect(response.body.message).toMatch(/stock insuficiente/i);
   });
 
-  it('procesa el cobro sandbox, descuenta stock e incluye el envío en la venta', async () => {
+  it('procesa el cobro sandbox, reserva stock (no lo descuenta todavía) e incluye el envío en la venta', async () => {
     const response = await request(app)
       .post(`/api/pedidos/${order.id_pedido}/pagar-culqi`)
       .set('X-Order-Payment-Token', paymentToken)
@@ -115,15 +116,18 @@ describe('Pedidos web y pagos Culqi', () => {
     const storedProduct = await Producto.findByPk(product.id_producto);
     const lines = await DetalleVenta.findAll({ where: { venta_id: storedOrder.venta_id } });
     expect(storedOrder.estado_pago).toBe('pagado');
-    expect(storedProduct.stock).toBe(4);
+    // Pagado pero no entregado: el stock físico no se toca todavía, solo se reserva.
+    expect(storedProduct.stock).toBe(5);
+    expect(storedProduct.stock_reservado).toBe(1);
     expect(lines).toHaveLength(2);
     expect(lines.some(line => line.descripcion === 'Servicio de entrega a domicilio')).toBe(true);
     const movement = await MovimientoInventario.findOne({
-      where: { referencia_tipo: 'venta', referencia_id: storedOrder.venta_id, producto_id: product.id_producto },
+      where: { referencia_tipo: 'pedido_web', referencia_id: storedOrder.id_pedido, producto_id: product.id_producto, tipo: 'reserva' },
     });
     expect(movement).not.toBeNull();
+    expect(movement.cantidad).toBe(1);
     expect(movement.stock_anterior).toBe(5);
-    expect(movement.stock_nuevo).toBe(4);
+    expect(movement.stock_nuevo).toBe(5);
   });
 
   it('el seguimiento público no expone correo, teléfono ni documento', async () => {
@@ -178,5 +182,83 @@ describe('Pedidos web y pagos Culqi', () => {
     retrieve.mockRestore();
     delete process.env.CULQI_PUBLIC_KEY;
     delete process.env.CULQI_SECRET_KEY;
+  });
+
+  it('al entregar un pedido pagado, recién ahí descuenta stock físico y libera la reserva', async () => {
+    const admin = await createUser({ ...gerente, email: 'gerente-entrega@test.local' });
+    const token = getAuthToken(admin);
+    const deliverProduct = await createProducto({ sku: 'WEB-DELIVER-001', nombre: 'Producto a entregar', stock: 3, precio_unitario_con_igv: 50 });
+
+    const created = await request(app).post('/api/pedidos').send({
+      items: [{ productId: deliverProduct.id_producto, quantity: 2 }],
+      cliente_email: 'entrega@test.local',
+      cliente_nombre: 'Cliente Entrega',
+      cliente_telefono: '999999995',
+      tipo_entrega: 'recojo_tienda',
+      metodo_pago: 'tarjeta',
+      tipo_comprobante: 'boleta',
+    });
+    expect(created.statusCode).toBe(201);
+
+    await request(app)
+      .post(`/api/pedidos/${created.body.pedido.id_pedido}/pagar-culqi`)
+      .set('X-Order-Payment-Token', created.body.payment_token)
+      .send({ token: 'tkn_test_deliver' })
+      .expect(200);
+
+    const pagado = await Producto.findByPk(deliverProduct.id_producto);
+    expect(pagado.stock).toBe(3);
+    expect(pagado.stock_reservado).toBe(2);
+
+    const entregado = await request(app)
+      .patch(`/api/pedidos/admin/${created.body.pedido.id_pedido}/estado`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ estado: 'entregado' });
+    expect(entregado.statusCode).toBe(200);
+
+    const final = await Producto.findByPk(deliverProduct.id_producto);
+    expect(final.stock).toBe(1);
+    expect(final.stock_reservado).toBe(0);
+
+    // Repetir la entrega no debe volver a descontar (idempotencia por estado bloqueado).
+    const otraVez = await request(app)
+      .patch(`/api/pedidos/admin/${created.body.pedido.id_pedido}/estado`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ estado: 'entregado' });
+    expect(otraVez.statusCode).toBe(200);
+    expect((await Producto.findByPk(deliverProduct.id_producto)).stock).toBe(1);
+  });
+
+  it('al cancelar un pedido pagado y nunca entregado, libera la reserva sin tocar stock físico', async () => {
+    const admin = await createUser({ ...gerente, email: 'gerente-cancela@test.local' });
+    const token = getAuthToken(admin);
+    const cancelProduct = await createProducto({ sku: 'WEB-CANCEL-001', nombre: 'Producto a cancelar', stock: 4, precio_unitario_con_igv: 50 });
+
+    const created = await request(app).post('/api/pedidos').send({
+      items: [{ productId: cancelProduct.id_producto, quantity: 1 }],
+      cliente_email: 'cancela@test.local',
+      cliente_nombre: 'Cliente Cancela',
+      cliente_telefono: '999999994',
+      tipo_entrega: 'recojo_tienda',
+      metodo_pago: 'tarjeta',
+      tipo_comprobante: 'boleta',
+    });
+    await request(app)
+      .post(`/api/pedidos/${created.body.pedido.id_pedido}/pagar-culqi`)
+      .set('X-Order-Payment-Token', created.body.payment_token)
+      .send({ token: 'tkn_test_cancel' })
+      .expect(200);
+
+    expect((await Producto.findByPk(cancelProduct.id_producto)).stock_reservado).toBe(1);
+
+    const cancelado = await request(app)
+      .patch(`/api/pedidos/admin/${created.body.pedido.id_pedido}/estado`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ estado: 'cancelado' });
+    expect(cancelado.statusCode).toBe(200);
+
+    const final = await Producto.findByPk(cancelProduct.id_producto);
+    expect(final.stock).toBe(4);
+    expect(final.stock_reservado).toBe(0);
   });
 });

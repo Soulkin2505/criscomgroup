@@ -115,7 +115,8 @@ describe('Redes y banners - logica', () => {
     expect(res.body.tiktok_url).toBe('');
     expect(res.body.whatsapp_number).toBe('51904589554');
     const pub = await request(app).get('/api/social-links');
-    expect(Object.keys(pub.body).sort()).toEqual(['facebook_url', 'instagram_url', 'tiktok_url', 'whatsapp_number', 'youtube_url']);
+    expect(Object.keys(pub.body).sort()).toEqual(['correo', 'direccion', 'facebook_url', 'instagram_url', 'razon_social', 'ruc', 'tiktok_url', 'whatsapp_number', 'youtube_url']);
+    expect(pub.body.correo).toBe('ventas@criscomgroup.com.pe');
     expect(pub.body.tiktok_url).toBe('');
     expect(pub.body.facebook_url).toBe('https://web.facebook.com/criscom');
     const http = await request(app).patch('/api/social-links/admin').set(auth()).send({ instagram_url: 'http://instagram.com/x' });

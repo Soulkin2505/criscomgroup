@@ -1,13 +1,13 @@
 import { useRef } from "react"
 import { Info } from "lucide-react"
-import { fieldName, type EmpField } from "./empForm"
+import { fieldName, isPkcs12, type EmpField } from "./empForm"
 import { EmpApi, EmpSol } from "./EmpSecrets"
 import { EmpCert } from "./EmpCert"
 import { EmpFicha } from "./EmpFicha"
 import { EmpIdent } from "./EmpIdent"
 import { EmpLogo } from "./EmpLogo"
+import { EmpModo } from "./EmpModo"
 import { EmpNote } from "./empParts"
-import { EmpRail } from "./EmpRail"
 import { EmpSaveBar, type SaveKind } from "./EmpSaveBar"
 import { EmpEmpty, EmpError, EmpForbidden, EmpLoading } from "./EmpStates"
 import { pl } from "./empFormat"
@@ -17,7 +17,7 @@ import type { EmpFichaCtl } from "./useEmpEstado"
 export interface EmpTabProps { mob: boolean; ficha: EmpFichaCtl; onDirty?: (n: number) => void; onGoto?: (tab: string) => void }
 const REASON = "Solo Gerencia (rol 1) puede ver y editar los datos de la empresa."
 
-export function EmpEmpresaTab({ mob, ficha, onDirty }: EmpTabProps) {
+export function EmpEmpresaTab({ ficha, onDirty }: EmpTabProps) {
   const h = useEmpEmpresa(onDirty)
   const zone = useRef<HTMLDivElement>(null)
   const { draft: d, errs, company: base, alta } = h
@@ -28,7 +28,7 @@ export function EmpEmpresaTab({ mob, ficha, onDirty }: EmpTabProps) {
   if (!base && !h.creating) return <EmpEmpty onCreate={h.startCreate} />
 
   const errFields = (Object.keys(errs) as EmpField[]).filter(f => errs[f])
-  const missing = [!d.razon_social && "razón social", !d.ruc && "RUC", !d.direccion && "dirección", !d.sol_user && "usuario SOL", !d.sol_pass && "clave SOL", !d.cert && "certificado"].filter(Boolean) as string[]
+  const missing = [!d.razon_social && "razón social", !d.ruc && "RUC", !d.direccion && "dirección", !d.sol_user && "usuario SOL", !d.sol_pass && "clave SOL", !d.cert && "certificado", isPkcs12(d.cert) && !d.cert_password && "contraseña del certificado"].filter(Boolean) as string[]
   const sum = h.tried && errFields.length > 0
   let kind: SaveKind = "clean"
   if (h.saving) kind = "saving"
@@ -67,19 +67,18 @@ export function EmpEmpresaTab({ mob, ficha, onDirty }: EmpTabProps) {
             {sv.avisos.length > 0 ? <>El servidor devolvió {pl(sv.avisos.length, "aviso")}:<ul>{sv.avisos.map(a => <li key={a}>{a}</li>)}</ul></> : "No hubo avisos."}
           </EmpNote>
         )}
-        <div className="lay">
-          {!mob && <EmpRail flags={h.flags} mob={false} />}
-          <div style={{ minWidth: 0 }}>
-            {mob && <EmpRail flags={h.flags} mob />}
-            <div className="cards">
-              <EmpIdent d={d} base={base} errs={errs} set={h.set} />
-              <EmpLogo base={base} file={d.logo} error={errs.logo} onPick={f => h.pick("logo", f)} />
-              <EmpFicha ctl={ficha} alta={alta} />
-              <EmpSol d={d} base={base} errs={errs} alta={alta} set={h.set} />
-              <EmpCert base={base} file={d.cert} vence={h.vence} error={errs.cert} alta={alta} onPick={f => h.pick("cert", f)} />
-              <EmpApi d={d} base={base} errs={errs} set={h.set} />
-            </div>
-          </div>
+        <div className="cards">
+          <EmpIdent d={d} base={base} errs={errs} set={h.set} />
+          <EmpLogo base={base} file={d.logo} error={errs.logo} onPick={f => h.pick("logo", f)} />
+          <EmpSol d={d} base={base} errs={errs} alta={alta} set={h.set} />
+          <EmpCert
+            base={base} file={d.cert} vence={h.vence} error={errs.cert} alta={alta} onPick={f => h.pick("cert", f)}
+            password={d.cert_password} passwordError={errs.cert_password} onPassword={v => h.set("cert_password", v)}
+          />
+          <EmpApi d={d} base={base} errs={errs} set={h.set} />
+          {/* Subir la ficha puede pasar la empresa a produccion: se relee para mostrar el modo nuevo. */}
+          <EmpFicha ctl={{ ...ficha, onSheet: s => { ficha.onSheet(s); void h.load(true) } }} alta={alta} cert={!!base?.certificado_configurado} />
+          <EmpModo base={base} onChanged={() => { void h.load(true); ficha.reload() }} />
         </div>
       </div>
       <EmpSaveBar

@@ -50,6 +50,7 @@ const masterAccountLimiter = limiter({
   message: { message: "Demasiados intentos. Espera unos minutos antes de volver a intentarlo." },
 });
 const publicSubmissionLimiter = limiter(security.publicSubmission);
+const webhookLimiter = limiter(security.webhook);
 
 const requestId = (req, res, next) => {
   const incoming = req.get("x-request-id");
@@ -64,4 +65,4 @@ const secureHeaders = helmet({
   referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 });
 
-module.exports = { apiLimiter, authLimiter, masterAccountLimiter, authRequestWasSuccessful, publicSubmissionLimiter, requestId, secureHeaders };
+module.exports = { apiLimiter, authLimiter, masterAccountLimiter, authRequestWasSuccessful, publicSubmissionLimiter, webhookLimiter, requestId, secureHeaders };

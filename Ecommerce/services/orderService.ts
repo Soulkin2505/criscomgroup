@@ -16,7 +16,7 @@ export interface CreateOrderRequest {
   direccion_provincia?: string;
   direccion_distrito?: string;
   direccion_referencia?: string;
-  metodo_pago: 'yape' | 'plin' | 'transferencia' | 'tarjeta' | 'mercadopago' | 'niubiz' | 'contraentrega';
+  metodo_pago: 'yape' | 'billetera_digital' | 'pago_efectivo' | 'cuotealo' | 'plin' | 'transferencia' | 'tarjeta' | 'mercadopago' | 'niubiz' | 'contraentrega';
   notas_cliente?: string;
   requiere_factura?: boolean;
   tipo_comprobante?: 'boleta' | 'factura';

@@ -6,6 +6,7 @@ const {
   DetalleVenta,
 } = require('../models');
 
+const { workshopAmounts } = require('./workshop-amounts.service');
 const money = value => Math.round(Number(value || 0) * 100) / 100;
 
 const classifyServiceOrder = parts => parts.length ? 'boleta_factura' : 'recibo_honorarios';
@@ -33,12 +34,15 @@ const finalizeServiceOrderBilling = async (orderId, userId, transaction) => {
   if (total <= 0) throw new Error('La orden no tiene un importe facturable');
   if (paid + 0.001 < total) throw new Error('La orden todavía tiene saldo pendiente');
 
-  const classification = classifyServiceOrder(parts);
-  const isInvoice = classification === 'boleta_factura' && /^\d{11}$/.test(String(order.documento || ''));
+  if (order.moneda !== 'PEN') throw new Error('La facturación actual solo admite soles; la orden requiere revisión de moneda');
+  const amounts = workshopAmounts(order, parts);
+  const classification = amounts.productTotal > 0 ? (amounts.serviceTotal > 0 ? 'mixta' : 'boleta_factura') : 'recibo_honorarios';
+  const fiscalTotal = amounts.productTotal || amounts.serviceTotal;
+  const isInvoice = amounts.productTotal > 0 && /^\d{11}$/.test(String(order.documento || ''));
   const sale = await Venta.unscoped().create({
     fecha: new Date(),
-    total: classification === 'recibo_honorarios' ? total : money(total / 1.18),
-    total_con_igv: total,
+    total: classification === 'recibo_honorarios' ? fiscalTotal : money(fiscalTotal / 1.18),
+    total_con_igv: fiscalTotal,
     id_cajero: userId,
     metodo_pago: [...new Set(payments.map(payment => payment.metodo))].join('+') || 'otro',
     observaciones: `Orden de servicio ${order.codigo}`,
@@ -50,28 +54,27 @@ const finalizeServiceOrderBilling = async (orderId, userId, transaction) => {
     estado_comprobante: 'pendiente',
     comprobante_emitido: false,
     tipo_vendedor_snapshot: 'servicio_tecnico',
-    neto_vendedor: total,
+    neto_vendedor: fiscalTotal,
     affiliate_business_id: order.affiliate_business_id || null,
     origen_tipo: 'orden_servicio',
     orden_servicio_id: order.id_orden_servicio,
-    categoria_ingreso: 'servicios',
+    categoria_ingreso: amounts.productTotal > 0 ? 'productos_taller' : 'servicios',
   }, { transaction });
 
-  const lines = parts.map(part => ({
+  const lines = amounts.lines.filter(line => line.gross > 0).map(({ part, gross, net }) => ({
     venta_id: sale.venta_id,
     producto_id: part.id_producto || null,
     descripcion: part.descripcion,
     cantidad: part.cantidad,
-    precio_unitario: money(Number(part.precio_unitario) / 1.18),
-    precio_unitario_con_igv: part.precio_unitario,
-    subtotal: money(Number(part.precio_unitario) * Number(part.cantidad) / 1.18),
-    subtotal_con_igv: money(Number(part.precio_unitario) * Number(part.cantidad)),
+    precio_unitario: money(net / Number(part.cantidad)),
+    precio_unitario_con_igv: money(gross / Number(part.cantidad)),
+    subtotal: net,
+    subtotal_con_igv: gross,
     condicion: 'nuevo',
     garantia_meses: 0,
   }));
-  const partsSale = money(parts.reduce((sum, part) => sum + Number(part.precio_unitario) * Number(part.cantidad), 0));
-  const serviceSale = money(total - partsSale);
-  if (serviceSale > 0) lines.push({
+  const serviceSale = amounts.serviceTotal;
+  if (classification === 'recibo_honorarios' && amounts.serviceTotal > 0) lines.push({
     venta_id: sale.venta_id,
     producto_id: null,
     descripcion: order.trabajo_realizado || (order.tipo === 'armado_pc' ? 'Servicio de armado de PC' : 'Servicio técnico y mano de obra'),

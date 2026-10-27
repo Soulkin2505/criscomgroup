@@ -13,6 +13,11 @@ vi.mock('../../services/marketingService', async () => ({
   ...(await vi.importActual<object>('../../services/marketingService')),
   getBanners: vi.fn().mockResolvedValue([]),
 }))
+// RUC publico (EmpresaPublicaCard) se prueba aparte; aqui solo evita que dispare una llamada real.
+vi.mock('../../services/companyService', () => ({
+  fetchCompanies: vi.fn().mockResolvedValue([]),
+  setCompanyMostrarEnWeb: vi.fn(),
+}))
 
 const empty = { instagram_url: '', facebook_url: '', tiktok_url: '', youtube_url: '', whatsapp_number: '' }
 const renderPage = () => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><SocialLinksPage /></QueryClientProvider>)

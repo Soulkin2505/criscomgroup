@@ -28,9 +28,10 @@ const validateEnv = () => {
     const password = process.env.SUNAT_SOL_PASSWORD || process.env.SUNAT_RUC10_SOL_PASSWORD;
     const pfxReady = Boolean(process.env.SUNAT_RUC10_PFX_PATH && (process.env.SUNAT_RUC10_PFX_PASSWORD_B64 || process.env.SUNAT_RUC10_PFX_PASSWORD));
     const pemReady = Boolean((process.env.SUNAT_PRIVATE_KEY_PATH || process.env.SUNAT_RUC10_PRIVATE_KEY_PATH) && (process.env.SUNAT_CERTIFICATE_PATH || process.env.SUNAT_RUC10_CERTIFICATE_PATH));
+    // Las credenciales pueden venir del ERP (Empresa > Acceso SOL y Certificado): cada empresa solo pasa a
+    // produccion cuando su configuracion esta completa (sunat.companyMode), asi que aqui solo se avisa.
     if (!ruc || !user || !password || (!pfxReady && !pemReady)) {
-      console.error('FATAL: SUNAT producción requiere RUC, usuario SOL secundario, contraseña SOL y material de firma del RUC 10.');
-      process.exit(1);
+      console.warn('[sunat] SUNAT_MODE=production sin credenciales en el servidor: se usarán las configuradas en el ERP por cada empresa.');
     }
   }
 };

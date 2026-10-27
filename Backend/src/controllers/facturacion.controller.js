@@ -4,7 +4,7 @@ const sunat = require('../services/sunat.service');
 
 const publicEmitter = company => {
   const ready = sunat.readiness(company);
-  const info = sunat.sunatModeInfo();
+  const modo = sunat.companyMode(company);
   return {
     id_company: company.id_company,
     razon_social: company.razon_social,
@@ -20,8 +20,9 @@ const publicEmitter = company => {
     configuracion_completa: ready.complete,
     origen_credenciales: ready.sol_source,
     origen_certificado: ready.certificate_source,
-    modo_sunat: info.mode === 'production' ? 'produccion' : 'pruebas',
-    modo_valido: info.valid,
+    modo_sunat: modo.mode === 'production' ? 'produccion' : 'pruebas',
+    modo_motivo: modo.motivo,
+    modo_valido: modo.servidor_valido,
   };
 };
 
@@ -76,10 +77,22 @@ exports.emit = async (req, res) => {
     if (sale.affiliate_business_id && sale.metodo_pago !== 'tarjeta') {
       throw new Error('Las ventas propias del afiliado no usan el emisor SUNAT de CRISCOM; solo las cobradas con tarjeta por Culqi se facturan con este RUC');
     }
+    if (sale.orden_servicio_id && sale.categoria_ingreso !== 'productos_taller') throw new Error('Esta orden requiere revisión fiscal: no se emitirá mano de obra como venta de productos');
     if (!['1', '3'].includes(sale.tipo_documento)) throw new Error('Las notas de venta no se envían a SUNAT');
     if (sale.comprobante_emitido) throw new Error('El comprobante ya fue emitido');
     const company = await selectEmitter(req, transaction);
+    await sunat.activateIfReady(company, { transaction });
     const type = sale.tipo_documento === '1' ? '01' : '03';
+    // Pruebas manuales: se genera y firma el XML para probar, pero no se reserva correlativo, no se guarda
+    // documento ni se marca la venta como emitida; asi puede emitirse de verdad al volver a produccion.
+    if (sunat.companyMode(company).motivo === 'manual') {
+      const serie = type === '01' ? company.serie_factura : company.serie_boleta;
+      const next = (Number(await DocumentoElectronico.max('correlativo', { where: { id_company_emisor: company.id_company, tipo: type, serie }, transaction })) || 0) + 1;
+      const preview = { ...sale.get({ plain: true }), serie, correlativo: next };
+      sunat.signXml(sunat.buildInvoiceXml({ company, sale: preview, details: sale.detalles }), company);
+      await transaction.commit();
+      return res.json({ success: true, sandbox: true, prueba: true, documento: { id: null, estado: 'prueba', serie, correlativo: next, codigo: '0', mensaje: 'Modo pruebas activado manualmente: XML generado y firmado, no enviado a SUNAT. La venta sigue sin emitir.' } });
+    }
     const existing = await DocumentoElectronico.findOne({ where: { venta_id: sale.venta_id }, transaction });
     if (existing?.estado === 'aceptado') throw new Error('El comprobante ya fue aceptado');
     if (existing && existing.id_company_emisor !== company.id_company) throw new Error('No se puede cambiar el emisor después de iniciar la emisión');
@@ -153,7 +166,7 @@ exports.setDefaultEmitter = async (req, res) => {
     if (!company) throw Object.assign(new Error('Emisor no encontrado'), { status: 404 });
     if (company.tipo_ruc !== '10') throw new Error('Por ahora solo se puede usar el RUC 10');
     if (!company.facturacion_habilitada) throw new Error('El emisor está deshabilitado');
-    if (!publicEmitter(company).configuracion_completa && sunat.sunatMode() !== 'sandbox') throw new Error('Faltan certificado o credenciales SOL de este emisor');
+    if (!publicEmitter(company).configuracion_completa && sunat.companyMode(company).mode !== 'sandbox') throw new Error('Faltan certificado o credenciales SOL de este emisor');
     await Company.update({ emisor_predeterminado: false }, { where: {}, transaction });
     await company.update({ emisor_predeterminado: true }, { transaction });
     await transaction.commit();
@@ -189,7 +202,7 @@ exports.updateEmitter = async (req, res) => {
         return fail(res, 409, 'Este emisor ya tiene comprobantes. Cambiar las series reinicia el correlativo en 1 para la serie nueva; confirma el cambio para continuar.', { requiere_confirmacion: true, comprobantes_emitidos: emitted });
       }
     }
-    if (!sunat.readiness(company).complete && sunat.sunatMode() !== 'sandbox') throw new Error('Faltan certificado o credenciales SOL de este emisor: no se puede habilitar en producción');
+    if (!sunat.readiness(company).complete && sunat.companyMode(company).mode !== 'sandbox') throw new Error('Faltan certificado o credenciales SOL de este emisor: no se puede habilitar en producción');
     await Company.update({ emisor_predeterminado: false }, { where: { id_company: { [Op.ne]: company.id_company } }, transaction });
     await company.update({ razon_social: razonSocial, direccion, serie_factura: serieFactura, serie_boleta: serieBoleta, facturacion_habilitada: true, emisor_predeterminado: true, sunat_config_key: 'RUC10' }, { transaction });
     await transaction.commit();

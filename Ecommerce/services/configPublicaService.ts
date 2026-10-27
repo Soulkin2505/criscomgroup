@@ -4,7 +4,10 @@ import { ECOMMERCE_API_URL } from "@/config/constants"
 
 export interface ConfigPublica {
   nombre_comercial: string | null
+  razon_social: string | null
+  ruc: string | null
   direccion: string | null
+  correo: string | null
   horario: { inicio: string | null; fin: string | null }
   telefono: string | null
   whatsapp_number: string | null

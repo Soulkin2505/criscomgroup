@@ -1,3 +1,4 @@
+import { WorkshopBilling } from './WorkshopBilling'
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   CircleAlert, CircleCheck, ChevronRight, Clock, ExternalLink, FileText, Image as ImageIcon, Pencil, Plus, Send, ShieldCheck, Upload, Wallet,
@@ -342,6 +343,7 @@ export function PagosTab({ o, data, refresh }: TabProps) {
         <div className="sh" style={{ minHeight: 32 }}><span className="num">Pagado {money(o.adelanto)} de {money(m)}</span><small className="num">Saldo {money(s)}</small></div>
         <div className="bar" role="img" aria-label={`Pagado ${pct} %`}><i style={{ width: `${pct}%` }} /></div>
       </div>
+      <WorkshopBilling order={o} refresh={refresh} />
       <div className="inl">
         <div className="sh" style={{ minHeight: 32 }}>Registrar pago</div>
         <div className="frm">

@@ -202,13 +202,13 @@ const DashboardLayout = () => {
       ] },
       ...(isMasterLike || [1, 6].includes(userRole) || user?.area_grants?.includes('servicio_tecnico') ? [{ path: "/services-area", label: "Servicio técnico", icon: <Wrench className="h-5 w-5" />, allowedRoles: user?.area_grants?.includes('servicio_tecnico') ? [1, 2, 3, 5, 6] : [1, 2, 3, 6], children: [
         { path: "/services", label: "Resumen del taller", icon: <Gauge className="h-4 w-4" /> },
-        { path: "/services/intake", label: "Nuevo ingreso", icon: <ClipboardPlus className="h-4 w-4" /> },
         ...(!user?.affiliate_business_id ? [{ path: "/services/web-requests", label: "Solicitudes web", icon: <Globe2 className="h-4 w-4" /> }] : []),
+        { path: "/services/intake", label: "Nuevo ingreso", icon: <ClipboardPlus className="h-4 w-4" /> },
         { path: "/services/technical", label: "Expedientes técnicos", icon: <ClipboardList className="h-4 w-4" /> },
         { path: "/services/maintenance", label: "Mantenimientos", icon: <Wrench className="h-4 w-4" /> },
+        { path: "/services/pc-builds", label: "Armado de PCs", icon: <Cpu className="h-4 w-4" /> },
         { path: "/services/diagnostics", label: "Diagnóstico asistido", icon: <BrainCircuit className="h-4 w-4" /> },
         { path: "/services/whatsapp", label: "Comunicación al cliente", icon: <MessageCircle className="h-4 w-4" /> },
-        { path: "/services/pc-builds", label: "Armado de PCs", icon: <Cpu className="h-4 w-4" /> },
         { path: "/services/cash", label: "Caja y ventas de servicio", icon: <Coins className="h-4 w-4" /> },
         { path: "/services/expenses", label: "Gastos del taller", icon: <Wallet className="h-4 w-4" /> },
       ] }] : []),
@@ -259,7 +259,7 @@ const DashboardLayout = () => {
           || (item.path === '/inventory-area' && ['/products', '/categories'].includes(path) && user?.area_grants?.includes('inventario'))
           || (item.path === '/inventory-area' && path === '/acquisitions' && user?.area_grants?.includes('compras'))
           || (item.path === '/administration' && path === '/audit-logs' && user?.area_grants?.includes('auditoria'))
-          || (item.path === '/administration' && path.startsWith('/company') && user?.area_grants?.includes('empresa_sunat') && !path.includes('tab=payments'))
+          || (item.path === '/administration' && path.startsWith('/company') && path !== '/company' && user?.area_grants?.includes('empresa_sunat') && !path.includes('tab=payments'))
           || (item.path === '/administration' && path === '/company?tab=payments' && user?.area_grants?.includes('pagos_pos'))
         return { ...item, children: (item.children! as Array<{ path: string; label: string; icon: React.ReactNode; allowedRoles?: number[] }>).filter(child => canSeeGrantedChild(child.path) || (child.allowedRoles?.includes(userRole) ?? true)) }
       })]

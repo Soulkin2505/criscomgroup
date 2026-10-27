@@ -93,6 +93,7 @@ app.use(cors({
 app.use(requestId)
 app.use(secureHeaders)
 app.use(express.json({ limit: security.jsonBodyLimit, strict: true }))
+app.use(require("./middlewares/openai-conversions").middleware)
 // S3: Uploads split público/privado (D1=A).
 // /uploads/public → acceso libre (logos, imágenes de producto).
 // /uploads/private → requiere token JWT (comprobantes, docs sensibles).

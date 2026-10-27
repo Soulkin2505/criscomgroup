@@ -98,6 +98,7 @@ const Venta = sequelize.define('Venta', {
   neto_vendedor: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
   affiliate_business_id: { type: DataTypes.INTEGER, allowNull: true },
   origen_tipo: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'venta_directa' },
+  pasarela_pago: { type: DataTypes.STRING(30), allowNull: true },
   orden_servicio_id: { type: DataTypes.INTEGER, allowNull: true, unique: true },
   categoria_ingreso: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'productos' },
   // NUEVOS CAMPOS PARA DESCUENTO EN VENTA

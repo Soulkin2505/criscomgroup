@@ -12,9 +12,11 @@ const UPLOADS = path.resolve(__dirname, '../uploads');
 const LIMITS = { razon_social: 100, direccion: 255, sol_user: 50, sol_pass: 50, client_id: 50, client_secret: 50 };
 const LOGO_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
 const LOGO_MAX = 2 * 1024 * 1024;
-const CERT_EXT = ['.pem', '.txt', '.crt', '.cer', '.cert'];
+const CERT_EXT = ['.pem', '.txt', '.crt', '.cer', '.cert', '.p12', '.pfx'];
+const PKCS12_EXT = ['.p12', '.pfx'];
 const CERT_MAX = 256 * 1024;
-const SECRET_KEYS = ['sol_user', 'sol_pass', 'client_secret'];
+// cert_password solo se usa para abrir el .p12/.pfx al subirlo: nunca se guarda ni se audita.
+const SECRET_KEYS = ['sol_user', 'sol_pass', 'client_secret', 'cert_password'];
 
 // Respuesta de error uniforme. `error` se conserva por compatibilidad con clientes antiguos.
 const fail = (res, status, message, errores) => res.status(status).json({ message, error: message, ...(errores ? { errores } : {}) });
@@ -44,18 +46,54 @@ const removeStored = (file, dirs) => {
 };
 const readHead = file => { const fd = fs.openSync(file.path, 'r'); try { const buf = Buffer.alloc(32); const n = fs.readSync(fd, buf, 0, 32, 0); return buf.slice(0, n); } finally { fs.closeSync(fd); } };
 
+const sameKey = (cert, key) => cert.publicKey?.n && key?.n && cert.publicKey.n.equals(key.n);
+// RUC del titular segun el certificado (SUNAT/RENIEC lo ponen en OU y en organizationIdentifier NTRPE-<ruc>).
+const certificateRuc = cert => {
+  for (const attr of cert.subject.attributes) {
+    const found = String(attr.value || '').match(/(?:^|\D)((?:10|20)\d{9})(?:\D|$)/);
+    if (found) return found[1];
+  }
+  return null;
+};
+
+// Convierte un .p12/.pfx (con su contrasena) en el PEM combinado que usa el firmador y borra el original.
+// node-forge abre tambien los PKCS#12 antiguos de SUNAT (RC2-40) que OpenSSL 3 rechaza sin -legacy.
+const convertPkcs12 = (file, password) => {
+  if (!password) throw new Error('Escribe la contraseña del certificado .p12/.pfx');
+  let p12;
+  try {
+    const der = fs.readFileSync(file.path).toString('binary');
+    p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), false, password);
+  } catch {
+    throw new Error('No se pudo abrir el certificado: la contraseña es incorrecta o el archivo no es un .p12/.pfx válido');
+  }
+  const bags = type => p12.getBags({ bagType: type })[type] || [];
+  const key = [...bags(forge.pki.oids.pkcs8ShroudedKeyBag), ...bags(forge.pki.oids.keyBag)].find(bag => bag.key)?.key;
+  const certs = bags(forge.pki.oids.certBag).map(bag => bag.cert).filter(Boolean);
+  const leaf = certs.find(cert => sameKey(cert, key));
+  if (!key || !leaf) throw new Error('El .p12/.pfx no contiene un certificado con su clave privada');
+  const pem = [forge.pki.privateKeyToPem(key), forge.pki.certificateToPem(leaf), ...certs.filter(c => c !== leaf).map(c => forge.pki.certificateToPem(c))].join('');
+  const target = file.path.replace(/\.(p12|pfx)$/i, '') + '.pem';
+  fs.writeFileSync(target, pem, { mode: 0o600 });
+  fs.rmSync(file.path, { force: true });
+  file.path = target;
+};
+
 const inspectCertificate = file => {
   const text = fs.readFileSync(file.path, 'utf8');
   const cert = text.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/)?.[0];
   const key = text.match(/-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA )?PRIVATE KEY-----/)?.[0];
-  if (!cert || !key) throw new Error('El certificado debe ser un PEM combinado con certificado y clave privada sin cifrar');
+  if (!cert || !key) throw new Error('El certificado debe ser un .p12/.pfx con su contraseña o un PEM con certificado y clave privada sin cifrar');
   const parsed = forge.pki.certificateFromPem(cert);
+  let privateKey = null;
+  try { privateKey = forge.pki.privateKeyFromPem(key); } catch { /* se informa abajo */ }
+  if (!sameKey(parsed, privateKey)) throw new Error('La clave privada no corresponde al certificado');
   if (parsed.validity.notAfter < new Date()) throw new Error(`El certificado venció el ${parsed.validity.notAfter.toISOString().slice(0, 10)}`);
-  return { vence_en: parsed.validity.notAfter.toISOString().slice(0, 10) };
+  return { vence_en: parsed.validity.notAfter.toISOString().slice(0, 10), ruc: certificateRuc(parsed) };
 };
 
-// Valida logo y certificado subidos. Devuelve { errores } o { cert }.
-const validateUploads = req => {
+// Valida logo y certificado subidos. Devuelve { errores } o { cert }. `ruc` = RUC final de la empresa.
+const validateUploads = (req, ruc) => {
   const errores = {};
   let cert = null;
   const logo = req.files?.logo?.[0];
@@ -68,7 +106,13 @@ const validateUploads = req => {
   if (file) {
     if (!CERT_EXT.includes(path.extname(file.originalname).toLowerCase())) errores.cert = 'El certificado debe ser un archivo .pem, .txt, .crt, .cer o .cert';
     else if (file.size > CERT_MAX) errores.cert = 'El certificado supera el máximo de 256 KB';
-    else { try { cert = inspectCertificate(file); } catch (error) { errores.cert = error.message || 'El certificado no es válido'; } }
+    else {
+      try {
+        if (PKCS12_EXT.includes(path.extname(file.originalname).toLowerCase())) convertPkcs12(file, req.body?.cert_password ? String(req.body.cert_password) : '');
+        cert = inspectCertificate(file);
+        if (cert.ruc && ruc && cert.ruc !== ruc) errores.cert = `El certificado es del RUC ${cert.ruc}, no del RUC ${ruc} de la empresa`;
+      } catch (error) { errores.cert = error.message || 'El certificado no es válido'; }
+    }
   }
   return { errores: Object.keys(errores).length ? errores : null, cert };
 };
@@ -112,7 +156,7 @@ const parseBody = (body, { creating, current }) => {
       }
     }
   }
-  if (body.production !== undefined) avisos.push('El modo producción se controla en el servidor (SUNAT_MODE) y no se cambia desde esta pantalla.');
+  if (body.production !== undefined) avisos.push('El modo producción no se cambia con este campo: es automático (SUNAT_MODE del servidor + configuración completa) y el modo pruebas se activa en «Modo SUNAT».');
   return { data, errores: Object.keys(errores).length ? errores : null, avisos };
 };
 
@@ -124,7 +168,7 @@ const documentCount = async idCompany => {
   return docs + ventas;
 };
 
-const publicShape = company => ({ id_company: company.id_company, razon_social: company.razon_social, ruc: company.ruc, tipo_ruc: company.tipo_ruc, direccion: company.direccion, logo_url: company.logo_url });
+const publicShape = company => ({ id_company: company.id_company, razon_social: company.razon_social, ruc: company.ruc, tipo_ruc: company.tipo_ruc, direccion: company.direccion, logo_url: company.logo_url, mostrar_en_web: company.mostrar_en_web });
 const serializeFor = (company, role) => (role === 1 ? company.toJSON() : publicShape(company));
 const ORDER = [['emisor_predeterminado', 'DESC'], ['id_company', 'ASC']];
 
@@ -145,12 +189,12 @@ const getCompanyForSales = safe(async (_req, res) => {
   // Solo lo necesario para ventas; nunca sol_*, cert_path ni client_*.
   return res.status(200).json({
     message: 'Información de empresa para ventas',
-    data: { ...publicShape(company), production: sunat.sunatMode() === 'production' },
+    data: { ...publicShape(company), production: sunat.companyMode(company).mode === 'production' },
   });
 }, 'for-sales');
 
 const createCompany = safe(async (req, res) => {
-  const uploads = validateUploads(req);
+  const uploads = validateUploads(req, text(req.body?.ruc));
   const parsed = parseBody(req.body || {}, { creating: true, current: null });
   redactBody(req);
   const errores = { ...(parsed.errores || {}), ...(uploads.errores || {}) };
@@ -168,6 +212,7 @@ const createCompany = safe(async (req, res) => {
     facturacion_habilitada: false,
     emisor_predeterminado: false,
   });
+  await sunat.activateIfReady(company);
   await company.reload();
   return res.status(201).json({ message: 'Empresa creada correctamente', company, avisos: parsed.avisos, certificado: uploads.cert });
 }, 'crear');
@@ -175,7 +220,7 @@ const createCompany = safe(async (req, res) => {
 const updateCompany = (partialUpdate) => safe(async (req, res) => {
   const company = await Company.findByPk(req.params.id);
   if (!company) { discardUploads(req); return fail(res, 404, 'Empresa no encontrada'); }
-  const uploads = validateUploads(req);
+  const uploads = validateUploads(req, text(req.body?.ruc) || company.ruc);
   const parsed = parseBody(req.body || {}, { creating: false, current: company });
   redactBody(req);
   const errores = { ...(parsed.errores || {}), ...(uploads.errores || {}) };
@@ -196,12 +241,28 @@ const updateCompany = (partialUpdate) => safe(async (req, res) => {
   await company.update(data);
   if (logo) removeStored(oldLogo, ['logos']);
   if (cert) removeStored(oldCert, [path.join('private', 'certs')]);
+  await sunat.activateIfReady(company);
   await company.reload();
   return res.status(200).json({ message: 'Empresa actualizada correctamente', company, avisos: parsed.avisos, certificado: uploads.cert });
 }, 'actualizar');
 
 const updateCompanyPut = updateCompany(false);
 const updateCompanyPatch = updateCompany(true);
+
+// Cual empresa muestra su razon social/RUC/direccion en la web publica: una a la vez.
+// Se maneja aparte del PATCH general (que ademas valida certificado SUNAT) para que elegirla
+// no dependa de volver a enviar sol_user/sol_pass/cert.
+const setPublicCompany = safe(async (req, res) => {
+  const company = await Company.findByPk(req.params.id);
+  if (!company) return fail(res, 404, 'Empresa no encontrada');
+  const mostrar = flag(req.body?.mostrar_en_web);
+  await Company.sequelize.transaction(async (transaction) => {
+    if (mostrar) await Company.update({ mostrar_en_web: false }, { where: {}, transaction });
+    await company.update({ mostrar_en_web: mostrar }, { transaction });
+  });
+  await company.reload();
+  return res.status(200).json({ message: 'Visibilidad pública actualizada', company });
+}, 'mostrar-en-web');
 
 const deleteCompanyByRuc = safe(async (req, res) => {
   const company = await Company.findOne({ where: { ruc: req.params.ruc } });
@@ -214,4 +275,4 @@ const deleteCompanyByRuc = safe(async (req, res) => {
   return res.status(200).json({ message: 'Empresa eliminada correctamente' });
 }, 'eliminar');
 
-module.exports = { createCompany, updateCompanyPatch, updateCompanyPut, getCompanies, getCompanyByRuc, deleteCompanyByRuc, getCompanyForSales, fail, safe, redactBody, ORDER };
+module.exports = { createCompany, updateCompanyPatch, updateCompanyPut, getCompanies, getCompanyByRuc, deleteCompanyByRuc, getCompanyForSales, setPublicCompany, fail, safe, redactBody, ORDER };

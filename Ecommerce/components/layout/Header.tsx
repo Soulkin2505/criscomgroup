@@ -1,15 +1,14 @@
 "use client"
 
-// Navbar global del Ecommerce (port criscom-ecom-home): una sola linea de 64/56px,
-// mega-menu de Catalogo con las categorias reales, WhatsApp config-driven,
-// carrito con contador y cuenta/Ingresar. Sin hover-only ni degradados.
+// Cabecera con búsqueda GET al catálogo, navegación y acciones existentes.
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   ChevronDown, ClipboardList, LayoutDashboard, LogIn, LogOut,
-  Menu, MessageCircle, Package2, User, X,
+  Menu, Package2, Search, User, X,
 } from "lucide-react"
+import { FaWhatsapp } from "react-icons/fa"
 import { ecommerceAuthService, type User as EcomUser } from "@/services/ecommerceApi"
 import { homeService, type HomeCategoria } from "@/services/homeService"
 import { catIcon, waHref } from "@/components/home/homeShared"
@@ -136,31 +135,11 @@ const Header = () => {
                 <img className="logo-d" src="/logo-dark.png" alt="" width="196" height="38" />
           </Link>
 
-          <nav className="nav-links only-d" aria-label="Principal">
-            <Link className="nl" href="/" aria-current={pathname === "/" ? "page" : undefined}>
-              Inicio
-            </Link>
-            <button
-              type="button"
-              className="nl"
-              aria-expanded={openMenu === "mega"}
-              aria-haspopup="true"
-              aria-controls="mega-catalogo"
-              onClick={() => toggle("mega")}
-            >
-              Catálogo <ChevronDown className="pg-ic chev" style={{ width: 16, height: 16 }} aria-hidden />
-            </button>
-            {NAV_LINKS.map((item) => (
-              <Link
-                key={item.to}
-                className="nl"
-                href={item.to}
-                aria-current={pathname === item.to ? "page" : undefined}
-              >
-                {item.name}
-              </Link>
-            ))}
-          </nav>
+          <form className="header-search" action="/catalogo" method="get" role="search" aria-label="Búsqueda global">
+            <label className="sr" htmlFor="header-search">Buscar productos o categorías</label>
+            <input id="header-search" name="q" type="search" placeholder="¿Qué producto estás buscando?" maxLength={200} />
+            <button type="submit" aria-label="Buscar en el catálogo"><Search className="pg-ic" aria-hidden /><span>Buscar</span></button>
+          </form>
 
           <div className="nav-spacer only-m" />
 
@@ -173,9 +152,8 @@ const Header = () => {
                 rel="noopener noreferrer"
                 aria-label={`Escribir por WhatsApp al ${waLabel}`}
               >
-                <MessageCircle className="pg-ic" aria-hidden />
-                <span>WhatsApp</span>
-                <span className="wa-num num">{waLabel}</span>
+                <FaWhatsapp className="pg-ic" aria-hidden />
+                <span className="wa-copy"><strong>WhatsApp</strong><small>Te asesoramos</small></span>
               </a>
             )}
 
@@ -237,6 +215,31 @@ const Header = () => {
               {openMenu === "mobile" ? <X className="pg-ic" aria-hidden /> : <Menu className="pg-ic" aria-hidden />}
             </button>
           </div>
+          <nav className="nav-links only-d" aria-label="Principal">
+            <Link className="nl" href="/" aria-current={pathname === "/" ? "page" : undefined}>
+              Inicio
+            </Link>
+            <button
+              type="button"
+              className="nl"
+              aria-expanded={openMenu === "mega"}
+              aria-haspopup="true"
+              aria-controls="mega-catalogo"
+              onClick={() => toggle("mega")}
+            >
+              Catálogo <ChevronDown className="pg-ic chev" style={{ width: 16, height: 16 }} aria-hidden />
+            </button>
+            {NAV_LINKS.map((item) => (
+              <Link
+                key={item.to}
+                className="nl"
+                href={item.to}
+                aria-current={pathname === item.to ? "page" : undefined}
+              >
+                {item.name}
+              </Link>
+            ))}
+          </nav>
         </div>
 
         {openMenu === "mega" && (
@@ -310,7 +313,7 @@ const Header = () => {
               )}
               {waUrl && (
                 <a className="btn btn-wa btn-block" href={waUrl} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle className="pg-ic" aria-hidden /> Escribir por WhatsApp
+                  <FaWhatsapp className="pg-ic" aria-hidden /> Escribir por WhatsApp
                 </a>
               )}
             </div>

@@ -7,12 +7,13 @@ const {
   DetalleVenta,
   User,
   AffiliateBusiness,
-  MovimientoInventario,
 } = require('../models');
+const { ajustarReserva } = require('./stock.service');
 
 const money = value => Math.round(Number(value || 0) * 100) / 100;
 
-const finalizePaidOrder = async (orderId, transaction) => {
+const finalizePaidOrder = async (orderId, transaction, payment = {}) => {
+  const pasarelaPago = payment.pasarela_pago || null;
   const order = await Pedido.findByPk(orderId, {
     include: [{ model: PedidoDetalle, as: 'detalles' }],
     transaction,
@@ -32,7 +33,11 @@ const finalizePaidOrder = async (orderId, transaction) => {
     });
     const alreadyReserved = reservedByProduct.get(item.producto_id) || 0;
     const requestedTotal = alreadyReserved + Number(item.cantidad);
-    if (!product || Number(product.stock) < requestedTotal) {
+    // Disponible para vender = stock físico - lo ya reservado por otros
+    // pedidos pagados y aún no entregados (no se descuenta de verdad hasta
+    // la entrega, pero tampoco se puede vender dos veces la misma unidad).
+    const disponible = product ? Number(product.stock) - Number(product.stock_reservado) : 0;
+    if (!product || disponible < requestedTotal) {
       throw new Error(`Stock insuficiente para ${item.producto_nombre}`);
     }
     reservedByProduct.set(item.producto_id, requestedTotal);
@@ -42,7 +47,7 @@ const finalizePaidOrder = async (orderId, transaction) => {
     }
     const key = snapshotBusinessId ? String(snapshotBusinessId) : 'criscom';
     if (!groups.has(key)) groups.set(key, { affiliateBusinessId: snapshotBusinessId, items: [] });
-    groups.get(key).items.push({ item, product, stockAnterior: Number(product.stock) });
+    groups.get(key).items.push({ item, product });
   }
 
   const typeMap = { nota_venta: '0', factura: '1', boleta: '3' };
@@ -55,7 +60,6 @@ const finalizePaidOrder = async (orderId, transaction) => {
   }
 
   const createdSales = [];
-  const stockCursor = new Map();
   for (const group of groups.values()) {
     let cashier = systemCashier;
     let commissionRate = 0;
@@ -93,6 +97,11 @@ const finalizePaidOrder = async (orderId, transaction) => {
       comision_servicio: commission,
       neto_vendedor: money(total - commission),
       affiliate_business_id: group.affiliateBusinessId,
+      // Distingue esta venta (nacida de un pedido web) de una venta de
+      // mostrador, y registra con qué pasarela se cobró, para que no se
+      // mezclen en los reportes de cada afiliado ni en el cierre de caja.
+      origen_tipo: 'pedido_web',
+      pasarela_pago: pasarelaPago,
     }, { transaction });
 
     const lines = group.items.map(({ item }) => ({
@@ -122,24 +131,25 @@ const finalizePaidOrder = async (orderId, transaction) => {
       estado_observaciones: null,
     });
     await DetalleVenta.bulkCreate(lines, { transaction });
-    for (const { item, product, stockAnterior } of group.items) {
-      const currentStock = stockCursor.has(product.id_producto) ? stockCursor.get(product.id_producto) : stockAnterior;
-      const stockNuevo = currentStock - Number(item.cantidad);
-      await product.update({ stock: stockNuevo }, { transaction });
-      stockCursor.set(product.id_producto, stockNuevo);
-      await MovimientoInventario.create({
-        producto_id: product.id_producto,
-        tipo: 'venta',
-        cantidad: item.cantidad,
-        stock_anterior: currentStock,
-        stock_nuevo: stockNuevo,
-        costo_unitario: product.costo_promedio || null,
-        referencia_tipo: 'venta',
-        referencia_id: sale.venta_id,
-        motivo: `Pedido web ${order.numero_pedido}`,
-        usuario_id: cashier.id_user,
-        affiliate_business_id: group.affiliateBusinessId,
-      }, { transaction });
+    // No se descuenta stock físico aquí: se reserva. El pedido ya está pagado
+    // y facturado (la Venta ya existe), pero la unidad solo sale del
+    // inventario físico de verdad cuando el pedido pasa a "entregado"
+    // (pedido.controller.js#updateStatus). Esto evita descontar algo que al
+    // final no se llega a entregar, sin arriesgar vender dos veces lo mismo:
+    // ajustarReserva es atómico, así que varias líneas del mismo producto en
+    // este pedido se acumulan correctamente sin necesitar un cursor en JS.
+    for (const { item, product } of group.items) {
+      await ajustarReserva({
+        productoId: product.id_producto,
+        delta: Number(item.cantidad),
+        tipo: 'reserva',
+        referenciaTipo: 'pedido_web',
+        referenciaId: order.id_pedido,
+        motivo: `Pedido web ${order.numero_pedido}: pagado, pendiente de entrega`,
+        usuarioId: cashier.id_user,
+        affiliateBusinessId: group.affiliateBusinessId,
+        transaction,
+      });
     }
     await PedidoVenta.create({
       id_pedido: order.id_pedido,

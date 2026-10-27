@@ -99,6 +99,7 @@ export const leerFactor = (texto: string): FactorSeg | null => {
 
 export const METODO_PAGO_LABEL: Record<string, string> = {
   contraentrega: "Contraentrega", tarjeta: "Tarjeta", yape: "Yape", plin: "Plin",
+  billetera_digital: "Billetera digital", pago_efectivo: "PagoEfectivo", cuotealo: "Cuotéalo",
   transferencia: "Transferencia", mercadopago: "Mercado Pago", niubiz: "Niubiz",
 }
 export const TIPO_ENTREGA_LABEL: Record<string, string> = {

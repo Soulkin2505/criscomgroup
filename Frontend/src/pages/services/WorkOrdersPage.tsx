@@ -33,6 +33,7 @@ function due(o: WorkOrder, hoy: string) {
 
 export default function WorkOrdersPage({ tipo }: { tipo: WorkOrderType }) {
   const title = TITLES[tipo]
+  const intakeUrl = `/services/intake?tipo=${tipo}`
   useDocumentTitle(title)
   const hoy = todayLima()
   const [params, setParams] = useSearchParams()
@@ -155,7 +156,7 @@ export default function WorkOrdersPage({ tipo }: { tipo: WorkOrderType }) {
   const rowsEl = (() => {
     if (status === "load") return <div className="list" aria-busy="true">{[0, 1, 2, 3, 4, 5, 6, 7].map(i => <div className="rw2" key={i} aria-hidden="true"><span className="rb" style={{ gap: 6 }}><span className="sk" style={{ width: "38%" }} /><span className="sk" style={{ width: "80%" }} /><span className="sk" style={{ width: "55%" }} /></span></div>)}</div>
     if (status === "error") return <div className="list"><div className="empty">{I(Inbox, 28)}<h3>No se pudieron cargar las órdenes</h3><button type="button" className="btn out" onClick={() => { setStatus("load"); void load() }}>Reintentar</button></div></div>
-    if (!records.length) return <div className="list"><div className="empty">{I(Inbox, 28)}<h3>Aún no hay órdenes</h3><span>Las órdenes aparecen aquí cuando se registra un ingreso.</span><Link className="btn out" to="/services/intake">{I(Plus, 16)}Nuevo ingreso</Link></div></div>
+    if (!records.length) return <div className="list"><div className="empty">{I(Inbox, 28)}<h3>Aún no hay órdenes</h3><span>Las órdenes aparecen aquí cuando se registra un ingreso.</span><Link className="btn out" to={intakeUrl}>{I(Plus, 16)}Nuevo ingreso</Link></div></div>
     if (!list.length) return <div className="list"><div className="empty">{I(Search, 28)}<h3>Sin resultados</h3><span>{query ? `Ninguna orden coincide con «${query}»` : "No hay órdenes en este estado"}{filter !== "todos" ? ` en «${ST[filter][0]}»` : ""}.</span><button type="button" className="btn out" onClick={() => { setQuery(""); setFilter("todos") }}>Limpiar filtros</button></div></div>
     let g = false
     return (
@@ -194,7 +195,7 @@ export default function WorkOrdersPage({ tipo }: { tipo: WorkOrderType }) {
   )
   const placeholder = (t: string) => <section className="ex card"><div className="empty">{I(FileText, 28)}<h3>{t}</h3><span>El expediente aparece aquí.</span></div></section>
 
-  const nuevo = <Link className="btn" to="/services/intake">{I(Plus, 16)}Nuevo ingreso</Link>
+  const nuevo = <Link className="btn" to={intakeUrl}>{I(Plus, 16)}Nuevo ingreso</Link>
   const hd = (
     <div className="hd">
       <h1>{title}</h1>

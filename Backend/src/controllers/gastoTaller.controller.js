@@ -3,7 +3,7 @@ const { GastoTaller, sequelize } = require('../models');
 
 const CATEGORIAS = [
   'insumos', 'herramientas', 'repuestos_stock', 'alquiler', 'servicios',
-  'transporte', 'limpieza', 'software', 'capacitacion', 'otros',
+  'mano_obra_tercerizada', 'transporte', 'limpieza', 'software', 'capacitacion', 'otros',
 ];
 const COMPROBANTES = ['ninguno', 'boleta', 'factura', 'recibo', 'otro'];
 
@@ -20,6 +20,7 @@ const normalize = (body) => {
     orden_servicio_id: body.orden_servicio_id ? Number(body.orden_servicio_id) : null,
     notas: body.notas ? String(body.notas).trim() : null,
   };
+  if (data.categoria === 'mano_obra_tercerizada' && !data.orden_servicio_id) throw new Error('Vincula el pago al técnico con su orden de trabajo');
   if (!data.descripcion) throw new Error('La descripción del gasto es obligatoria');
   if (!Number.isFinite(data.monto) || data.monto <= 0) throw new Error('El monto debe ser un número mayor a 0');
   return data;

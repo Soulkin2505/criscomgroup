@@ -193,3 +193,13 @@
 .pg-postventa .hint .ic{vertical-align:-2px}
 .pg-postventa .kv dd .st .ic{margin-right:0;vertical-align:baseline;color:inherit}
 .pg-postventa .kv dt .ic{color:hsl(var(--muted-foreground))}
+/* Refinamiento visual: sin cambios de estructura ni comportamiento. */
+.pg-postventa { --muted-foreground: 215 20% 36%; }
+.dark .pg-postventa { --muted-foreground: 215 20% 70%; }
+.pg-postventa .hd h1 { color: hsl(var(--primary)); font-weight: 700; }
+
+.pg-postventa .chips { padding-bottom: 6px; scrollbar-width: auto; scrollbar-color: hsl(var(--primary)) hsl(var(--muted)); border-bottom: 1px solid hsl(var(--border-strong)); }
+.pg-postventa .chips::-webkit-scrollbar { height: 10px; }
+.pg-postventa .chips::-webkit-scrollbar-thumb { background: hsl(var(--primary)); border-radius: 8px; border: 2px solid hsl(var(--muted)); }
+.pg-postventa .chips::-webkit-scrollbar-track { background: hsl(var(--muted)); border-radius: 8px; }
+.pg-postventa .chip[aria-selected=true] { border-color: hsl(var(--primary)); box-shadow: inset 0 -2px hsl(var(--primary)); }

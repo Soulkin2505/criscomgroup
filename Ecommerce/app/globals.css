@@ -5,40 +5,40 @@
 
 :root {
   /* Sistema morado Criscom (port criscom-ecom-home). El cyan queda fuera del chrome y del home. */
-  --background: #F8FAFC;
+  --background: #FAF8FF;
   --foreground: #020817;
   --card: #FFFFFF;
   --card-foreground: #020817;
   --popover: #FFFFFF;
   --popover-foreground: #020817;
-  --main-bg: #F8FAFC;
+  --main-bg: #FAF8FF;
 
-  /* Marca: nucleo #4B2281, vivo #743AB4, tinta #2F115C */
-  --primary: #4B2281;
+  /* Marca: nucleo #7130D9, vivo #8B35D9, tinta #38106A */
+  --primary: #7130D9;
   --primary-foreground: #FFFFFF;
-  --primary-hover: #451B65;
-  --primary-soft: rgba(75, 34, 129, 0.10);
-  --secondary: #743AB4;
+  --primary-hover: #5C20B8;
+  --primary-soft: rgba(113, 48, 217, 0.10);
+  --secondary: #8B35D9;
   --secondary-foreground: #FFFFFF;
 
-  --muted: #F1F5F9;
+  --muted: #F3EDFC;
   --muted-foreground: #556377;
-  --accent: #F1F5F9;
+  --accent: #F3EDFC;
   --accent-foreground: #020817;
   --destructive: #C52020;
   --destructive-foreground: #FFFFFF;
   --destructive-text: #B81E1E;
   --success-text: #116A49;
   --warning-text: #7F4205;
-  --border: #E2E8F0;
-  --border-strong: #C6CFDD;
-  --input: #E2E8F0;
-  --ring: #4B2281;
-  --ink: #2F115C;
+  --border: #E7DDF4;
+  --border-strong: #CDBCE4;
+  --input: #E7DDF4;
+  --ring: #7130D9;
+  --ink: #38106A;
   --on-ink: #FFFFFF;
   --on-ink-soft: #E2D4ED;
-  --wa: #25D366;
-  --wa-hover: #1FB856;
+  --wa: #00C950;
+  --wa-hover: #00B447;
   --wa-ink: #04290F;
 
   /* Chart colors */
@@ -69,25 +69,25 @@
 
 .dark {
   --background: #020817;
-  --foreground: #F8FAFC;
+  --foreground: #FAF8FF;
   --card: #0F172A;
-  --card-foreground: #F8FAFC;
+  --card-foreground: #FAF8FF;
   --popover: #0F172A;
-  --popover-foreground: #F8FAFC;
+  --popover-foreground: #FAF8FF;
   --main-bg: #020817;
 
-  /* Primario claro #A867E3 con texto oscuro encima */
-  --primary: #A867E3;
+  /* Primario claro #C084FC con texto oscuro encima */
+  --primary: #C084FC;
   --primary-foreground: #020817;
-  --primary-hover: #B98BEA;
-  --primary-soft: rgba(168, 103, 227, 0.16);
-  --secondary: #A867E3;
+  --primary-hover: #D2A4FF;
+  --primary-soft: rgba(192, 132, 252, 0.16);
+  --secondary: #C084FC;
   --secondary-foreground: #020817;
 
   --muted: #1E293B;
   --muted-foreground: #94A3B8;
   --accent: #1E293B;
-  --accent-foreground: #F8FAFC;
+  --accent-foreground: #FAF8FF;
   --destructive: #EF4444;
   --destructive-foreground: #FFFFFF;
   --destructive-text: #F37272;
@@ -96,7 +96,7 @@
   --border: #1E293B;
   --border-strong: #324653;
   --input: #1E293B;
-  --ring: #A867E3;
+  --ring: #C084FC;
 
   /* Mejora de contraste para spans en modo oscuro; las superficies portadas
      (.pg-home / .pg-chrome) usan sus propios tokens y quedan exentas. */
@@ -149,8 +149,8 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   /* Criscom Group — brand color mappings */
-  --color-fv-gold: #4B2281; /* Primario morado para compatibilidad */
-  --color-fv-gold-bright: #A867E3; /* Primario dark mode */
+  --color-fv-gold: #7130D9; /* Primario morado para compatibilidad */
+  --color-fv-gold-bright: #C084FC; /* Primario dark mode */
   --color-fv-black: #020817; /* Background dark */
   --color-fv-gray: #1E293B; /* Background secondary dark */
 }

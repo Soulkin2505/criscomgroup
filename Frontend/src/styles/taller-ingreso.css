@@ -172,3 +172,10 @@
 .pg-ting .rs>button.btn,.pg-ting .rs>div>button{height:44px}
 .pg-ting .scrim{position:absolute;inset:0}
 @container (max-width:639px){.pg-ting .sc{padding:0 0 10px}.pg-ting .foot{padding:6px 0 0}}
+/* Refinamiento visual: sin cambios de estructura ni comportamiento. */
+.pg-ting { --muted-foreground: 215 20% 36%; }
+.dark .pg-ting { --muted-foreground: 215 20% 70%; }
+.pg-ting .hd h1 { color: hsl(var(--primary)); font-weight: 700; }
+
+.pg-ting .col > .card { box-shadow: 0 3px 12px hsl(222 47% 11% / .04); border-top: 3px solid hsl(var(--primary) / .45); }
+.pg-ting .ch2 h2 .ic { color: hsl(var(--primary)); }

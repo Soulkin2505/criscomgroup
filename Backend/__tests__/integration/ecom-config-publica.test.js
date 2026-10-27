@@ -18,11 +18,14 @@ describe('config-publica (ecom T1)', () => {
     });
   });
 
-  it('200 con los campos públicos de la empresa primaria', async () => {
+  it('200 con los campos públicos de la empresa marcada para la web (razón social, RUC, dirección y correo de soporte)', async () => {
     const res = await request(app).get('/api/ecommerce/config-publica');
     expect(res.statusCode).toBe(200);
     expect(res.body.nombre_comercial).toBe('seed-ecom Comercial S.A.C.');
+    expect(res.body.razon_social).toBe('seed-ecom Comercial S.A.C.');
+    expect(res.body.ruc).toBe('20000000001');
     expect(res.body.direccion).toBe('Av. seed-ecom 456, Arequipa');
+    expect(res.body.correo).toBe('ventas@criscomgroup.com.pe');
     expect(res.body.horario).toEqual({ inicio: expect.any(String), fin: expect.any(String) });
     expect(res.body.whatsapp_number).toBe('51999888777');
     expect(res.body.telefono).toBe('51999888777');
@@ -32,10 +35,12 @@ describe('config-publica (ecom T1)', () => {
     expect(res.body.redes).toHaveProperty('youtube_url');
   });
 
-  it('no expone RUC ni secretos SUNAT/Culqi/credenciales', async () => {
+  // Razón social/RUC/dirección son datos públicos de registro (exigidos por Culqi e INDECOPI),
+  // por eso ya no están en la lista de prohibidos; lo que nunca debe salir son las credenciales SUNAT/Culqi.
+  it('no expone secretos SUNAT/Culqi/credenciales', async () => {
     const res = await request(app).get('/api/ecommerce/config-publica');
     const raw = JSON.stringify(res.body);
-    for (const prohibido of ['ruc', '20000000001', 'sol_user', 'sol_pass', 'TESTUSR', 'TESTPASS', 'cert_path', 'client_id', 'client_secret', 'serie_factura', 'serie_boleta', 'sunat', 'culqi', 'id_user', 'production']) {
+    for (const prohibido of ['sol_user', 'sol_pass', 'TESTUSR', 'TESTPASS', 'cert_path', 'client_id', 'client_secret', 'serie_factura', 'serie_boleta', 'sunat', 'culqi', 'id_user', 'production']) {
       expect(raw.toLowerCase()).not.toContain(prohibido.toLowerCase());
     }
   });

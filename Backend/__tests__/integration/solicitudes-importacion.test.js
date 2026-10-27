@@ -107,6 +107,8 @@ describe('Solicitudes de importación — Admin (autenticación ERP)', () => {
 
   beforeAll(async () => {
     await setupTestDb();
+    // El área es exclusiva de la cuenta maestra: no depender de que otra suite haya definido la variable antes.
+    process.env.MASTER_ADMIN_EMAIL = 'cristophercalioro@gmail.com';
     const g = await createUser({ ...gerente, email: 'cristophercalioro@gmail.com' });
     const otroGerente = await createUser({ ...gerente, email: 'otro-gerente@test.local' });
     const v = await createUser(vendedor);

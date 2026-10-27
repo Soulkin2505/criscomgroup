@@ -42,12 +42,13 @@ const CatalogoClient = () => {
 
   useEffect(() => { load() }, [load])
 
-  // Deep links: ?categoria=<id> y ?ofertas=1 (navbar, home, footer ya enlazan asi).
+  // La búsqueda global reutiliza filtrar y los controles existentes mediante ?q=.
   useEffect(() => {
     const cat = Number(searchParams.get("categoria"))
     const ofertas = searchParams.get("ofertas") === "1"
     setF((prev) => ({
       ...prev,
+      q: (searchParams.get("q") || "").trim(),
       cats: Number.isInteger(cat) && cat > 0 ? [cat] : [],
       oferta: ofertas,
       page: 1,
@@ -162,7 +163,7 @@ const CatalogoClient = () => {
         <div style={{ marginTop: 8 }}>
           {status === "loading" && <CatalogoSkeletonGrid />}
           {status === "error" && <CatalogoError onRetry={load} />}
-          {status === "ready" && list.length === 0 && <CatalogoVacio q={f.q} onClear={clearAll} />}
+          {status === "ready" && list.length === 0 && <CatalogoVacio q={f.q} emptyCatalog={productos.length === 0} onClear={clearAll} />}
           {status === "ready" && list.length > 0 && (
             <>
               <div className="grid">

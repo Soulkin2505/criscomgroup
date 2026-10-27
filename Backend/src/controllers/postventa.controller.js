@@ -1,8 +1,9 @@
 const { Op } = require("sequelize");
 const { sequelize } = require("../config/database");
-const { SolicitudPostventa, SolicitudPostventaHistorial, DetalleVenta, PedidoDetalle, MovimientoInventario, Producto } = require("../models");
+const { SolicitudPostventa, SolicitudPostventaHistorial, DetalleVenta, PedidoDetalle, MovimientoInventario, Producto, Pago, Pedido } = require("../models");
 const svc = require("../services/postventa.service");
-const { aplicarMovimiento } = require("../services/stock.service");
+const { aplicarMovimiento, ajustarReserva } = require("../services/stock.service");
+const culqi = require("../services/culqi.service");
 
 const { ESTADOS, TIPOS, ACCIONES, TRANSICIONES, REAPERTURA, REQUIEREN_RESPUESTA, iso, norm, ultimos4 } = svc;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -43,6 +44,19 @@ const resolverProductoReingreso = async (item) => {
     const match = detalles.find((d) => coincide(d.producto_nombre));
     if (match) return match.producto_id;
   }
+  return null;
+};
+
+// Si el pedido web vinculado nunca llegó a "entregado", el stock de ese
+// producto nunca salió de verdad: todavía está en stock_reservado, no en
+// stock físico. Una venta de mostrador (sin pedido_id) siempre se entregó al
+// momento, así que cuenta como entregada. Sin pedido ni venta, no se sabe.
+const fueEntregado = async (item) => {
+  if (item.pedido_id) {
+    const pedido = await Pedido.findByPk(item.pedido_id, { attributes: ["estado"] });
+    return pedido ? pedido.estado === "entregado" : null;
+  }
+  if (item.venta_id) return true;
   return null;
 };
 
@@ -192,12 +206,14 @@ exports.getAdmin = safe(async (req, res) => {
   return res.json({ success: true, data });
 }, "getAdmin", "Error al obtener la solicitud.");
 
-function resumenCambios(antes, despues, cambios) {
+function resumenCambios(antes, despues, cambios, extra = {}) {
   const partes = [];
   if (cambios.estado) partes.push(`Estado: ${antes.estado} a ${despues.estado}`);
   if (cambios.respuesta_cliente) partes.push("Respuesta al cliente actualizada");
   if (cambios.notas_admin) partes.push("Notas internas actualizadas");
   if (cambios.accion_posterior || cambios.accion_posterior_nota) partes.push(`Acción posterior: ${despues.accion_posterior || "ninguna"}${despues.accion_posterior_nota ? ` (${despues.accion_posterior_nota})` : ""}`);
+  if (extra.refund) partes.push(`Reembolso Culqi confirmado: ${extra.refund.id} (S/ ${(extra.refund.amount / 100).toFixed(2)})`);
+  if (extra.inventario) partes.push(extra.inventario.entregado ? "Stock físico reingresado" : "Reserva de stock liberada (pedido nunca entregado)");
   return partes.join(". ");
 }
 
@@ -232,17 +248,58 @@ exports.updateAdmin = safe(async (req, res) => {
   }
   if (Object.keys(errores).length) return fail(res, 400, Object.values(errores)[0], errores);
 
-  // M8: reingreso real de stock. La accion final es la que quede registrada tras este cambio.
+  // M8: reingreso real de stock (reingreso_stock), ahora consciente de si el
+  // pedido llegó a entregarse de verdad. Si nunca se entregó, no hay nada
+  // físico que reingresar: lo que corresponde es liberar la reserva.
   const accionFinal = has("accion_posterior") ? (b.accion_posterior || null) : item.accion_posterior;
-  const reingresaStock = ["aprobada", "resuelta"].includes(destino) && accionFinal === "reingreso_stock";
-  let productoReingresoId = null;
-  if (reingresaStock) {
-    // Idempotencia: si ya existe el movimiento de esta solicitud, no se vuelve a aplicar
-    const yaAplicado = await MovimientoInventario.findOne({ where: { referencia_tipo: "postventa_reingreso", referencia_id: item.id_solicitud } });
+  const tocaInventarioPorAccion = ["aprobada", "resuelta"].includes(destino) && accionFinal === "reingreso_stock";
+  // Reembolso real por Culqi. Un único marcador de inventario ("postventa_stock")
+  // cubre tanto esta acción como la de arriba, para que nunca se libere o
+  // reingrese dos veces el mismo movimiento si el admin cambia de acción.
+  const reembolsaDinero = ["aprobada", "resuelta"].includes(destino) && accionFinal === "reembolso";
+
+  let inventario = null; // { entregado, productoId } cuando hay que tocar inventario
+  if (tocaInventarioPorAccion) {
+    const yaAplicado = await MovimientoInventario.findOne({ where: { referencia_tipo: "postventa_stock", referencia_id: item.id_solicitud } });
     if (!yaAplicado) {
-      productoReingresoId = await resolverProductoReingreso(item);
-      if (!productoReingresoId) {
-        return fail(res, 400, "No se pudo identificar el producto para reingresar stock. Vincula la solicitud a una venta o pedido válido, o registra otra acción posterior.");
+      const productoId = await resolverProductoReingreso(item);
+      if (!productoId) return fail(res, 400, "No se pudo identificar el producto para ajustar inventario. Vincula la solicitud a una venta o pedido válido, o registra otra acción posterior.");
+      const entregado = await fueEntregado(item);
+      if (entregado === null) return fail(res, 400, "No se pudo determinar si el pedido fue entregado. Vincula la solicitud a una venta o pedido válido.");
+      inventario = { entregado, productoId };
+    }
+  }
+
+  let pago = null;
+  let refundResult = null;
+  if (reembolsaDinero) {
+    if (!item.pedido_id) return fail(res, 400, "Solo se puede reembolsar por Culqi una solicitud vinculada a un pedido web.");
+    pago = await Pago.findOne({ where: { id_pedido: item.pedido_id, proveedor: "culqi" }, order: [["id_pago", "DESC"]] });
+    if (!pago || !["pagado", "devuelto"].includes(pago.estado)) {
+      return fail(res, 400, "No se encontró un pago con Culqi confirmado para este pedido.");
+    }
+    if (pago.estado === "pagado") {
+      if (!/^chr_/.test(String(pago.proveedor_id))) {
+        return fail(res, 400, "Este pedido se pagó con billetera digital, PagoEfectivo o Cuotéalo: el reembolso automático solo cubre tarjeta o Yape. Gestiónalo directo en CulqiPanel.");
+      }
+      try {
+        refundResult = await culqi.createRefund({ chargeId: pago.proveedor_id, reason: `Postventa ${item.codigo_seguimiento}: ${item.tipo}` });
+      } catch (refundError) {
+        const detail = refundError.response?.data?.merchant_message || refundError.message;
+        return fail(res, 502, `Culqi rechazó el reembolso: ${detail}`);
+      }
+    }
+    // Si el pedido nunca se entregó, no hay nada físico que el cliente se haya
+    // quedado: la reserva se libera siempre, sin que el admin tenga que elegirlo
+    // aparte. Si sí se entregó, el admin decide si además quiere reingreso_stock.
+    if (!inventario) {
+      const yaAplicado = await MovimientoInventario.findOne({ where: { referencia_tipo: "postventa_stock", referencia_id: item.id_solicitud } });
+      if (!yaAplicado) {
+        const entregado = await fueEntregado(item);
+        if (entregado === false) {
+          const productoId = await resolverProductoReingreso(item);
+          if (productoId) inventario = { entregado: false, productoId };
+        }
       }
     }
   }
@@ -257,23 +314,29 @@ exports.updateAdmin = safe(async (req, res) => {
   if (!Object.keys(cambios).length) return res.json({ success: true, data: vistaAdmin(item) });
 
   await sequelize.transaction(async (transaction) => {
-    if (productoReingresoId) {
-      await aplicarMovimiento({
-        productoId: productoReingresoId,
-        delta: item.cantidad,
-        tipo: "ajuste_entrada",
-        referenciaTipo: "postventa_reingreso",
+    if (inventario) {
+      const base = {
+        productoId: inventario.productoId,
+        referenciaTipo: "postventa_stock",
         referenciaId: item.id_solicitud,
-        motivo: `Postventa ${item.codigo_seguimiento}: reingreso por ${item.tipo}`,
         usuarioId: req.user?.id || null,
         affiliateBusinessId: item.affiliate_business_id || null,
         transaction,
-      });
+      };
+      if (inventario.entregado) {
+        await aplicarMovimiento({ ...base, delta: item.cantidad, tipo: "ajuste_entrada", motivo: `Postventa ${item.codigo_seguimiento}: reingreso por ${item.tipo}` });
+      } else {
+        await ajustarReserva({ ...base, delta: -item.cantidad, tipo: "liberacion", motivo: `Postventa ${item.codigo_seguimiento}: pedido nunca entregado, se libera la reserva` });
+      }
+    }
+    if (pago && refundResult) {
+      await pago.update({ estado: "devuelto", respuesta_segura: { ...(pago.respuesta_segura || {}), refund: culqi.sanitizeRefund(refundResult) } }, { transaction });
     }
     await item.save({ transaction });
     await SolicitudPostventaHistorial.create({
       solicitud_id: item.id_solicitud, usuario_id: req.user?.id || null,
-      de: actual, a: item.estado, nota: resumenCambios(antes, item, cambios).slice(0, 1000),
+      de: actual, a: item.estado,
+      nota: resumenCambios(antes, item, cambios, { refund: refundResult ? culqi.sanitizeRefund(refundResult) : null, inventario }).slice(0, 1000),
     }, { transaction });
   });
   await item.reload();

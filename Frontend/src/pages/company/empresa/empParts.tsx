@@ -97,12 +97,13 @@ export function EmpCheck({ on, onToggle, title, sub }: { on: boolean; onToggle: 
   )
 }
 
-/** Tarjeta plana de seccion: el titulo vive como leyenda sobre el borde. */
+/** Tarjeta plana de seccion: el submenu de la izquierda ya dice el titulo, asi
+ * que aqui solo se ve la ayuda; el titulo queda para lectores de pantalla. */
 export function EmpCard({ sec, title, help, children, cls = "" }: { sec: string; title: string; help: string; children: ReactNode; cls?: string }) {
   const id = useId()
   return (
     <section className={`cd ${cls}`.trim()} data-sec={sec} id={`emp-sec-${sec}`} aria-labelledby={id}>
-      <h2 className="lg" id={id}><span>{title}</span><small>{help}</small></h2>
+      <h2 className="lg" id={id}><span className="sr-only">{title}</span><small>{help}</small></h2>
       {children}
     </section>
   )

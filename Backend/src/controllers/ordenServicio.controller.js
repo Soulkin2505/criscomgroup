@@ -108,6 +108,8 @@ const findOrderProduct = (record, id, options = {}) => Producto.findOne({
   where: { ...(options.where || {}), id_producto: id, affiliate_business_id: record.affiliate_business_id },
 });
 const validateTechnicalLinks = async (req, data, transaction, createMissing = false) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (email && (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('Correo del cliente inválido');
   let client = null;
   let asset = null;
   if (data.cliente_servicio_id) {
@@ -137,6 +139,7 @@ const validateTechnicalLinks = async (req, data, transaction, createMissing = fa
     }, { transaction });
     data.cliente_servicio_id = client.id_cliente_servicio;
   }
+  if (createMissing && email && client) await client.update({ email }, { transaction });
   if (createMissing && !asset) {
     const serial = String(data.numero_serie || '').trim();
     if (serial) asset = await ActivoTecnico.findOne({
@@ -161,7 +164,7 @@ const validateTechnicalLinks = async (req, data, transaction, createMissing = fa
     data.numero_serie = asset.numero_serie || asset.imei;
   }
 };
-const paymentMethods = ["efectivo", "pos", "qr", "transferencia", "otro"];
+const paymentMethods = ["efectivo", "pos", "qr", "transferencia", "otro", "tarjeta", "yape", "plin", "pago_link"];
 const evidenceStages = [
   "recepcion",
   "diagnostico",
@@ -332,7 +335,7 @@ exports.cashSummary = async (req, res) => {
   try {
     const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.fecha || ""))
       ? String(req.query.fecha)
-      : new Date().toISOString().slice(0, 10);
+      : require('../services/cash-ledger.service').limaDay(new Date());
     let start = new Date(`${date}T00:00:00-05:00`);
     let end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     if (req.query.periodo === 'semana') start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -363,7 +366,7 @@ exports.cashSummary = async (req, res) => {
       anulado: 0,
       costo_repuestos: 0,
       saldo_por_cobrar: 0,
-      por_metodo: { efectivo: 0, pos: 0, qr: 0, transferencia: 0, otro: 0 },
+      por_metodo: { efectivo: 0, pos: 0, qr: 0, transferencia: 0, otro: 0, tarjeta: 0, yape: 0, plin: 0, pago_link: 0 },
     };
     const ordersById = new Map(activeOrders.map(order => [Number(order.id_orden_servicio), order]));
     payments.forEach(payment => {
@@ -440,7 +443,7 @@ exports.addPayment = async (req, res) => {
       throw new Error("Método de pago no válido");
     if (!Number.isFinite(monto) || monto <= 0)
       throw new Error("El monto debe ser mayor que cero");
-    if (["pos", "qr", "transferencia"].includes(metodo) && !referencia)
+    if (["pos", "qr", "transferencia", "tarjeta", "yape", "plin", "pago_link"].includes(metodo) && !referencia)
       throw new Error(
         "La referencia de operación es obligatoria para este método",
       );
@@ -1306,7 +1309,7 @@ exports.update = async (req, res) => {
       const paid = await confirmedPaymentsTotal(record.id_orden_servicio, transaction);
       if (paid + 0.001 < total) throw new Error('No se puede cerrar el servicio con saldo pendiente');
       await finalizeServiceOrderBilling(record.id_orden_servicio, userId(req), transaction);
-      data.fecha_entrega_real = new Date().toISOString().slice(0, 10);
+      data.fecha_entrega_real = require('../services/cash-ledger.service').limaDay(new Date());
       data.garantia_inicio = data.fecha_entrega_real;
       data.garantia_fin = addDays(data.fecha_entrega_real, data.garantia_dias);
       await OrdenServicioRepuesto.update(
@@ -1383,4 +1386,61 @@ exports.remove = async (req, res) => {
     await transaction.rollback();
     res.status(400).json({ message: error.message });
   }
+};
+
+// Reference only: this does not issue or validate a receipt with SUNAT.
+exports.registerHonorarios = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const order = await findOrder(req, req.params.id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!order) throw new Error('Orden no encontrada');
+    if (!order.venta_id || !['mixta', 'recibo_honorarios'].includes(order.clasificacion_fiscal)) throw new Error('La orden no tiene honorarios pendientes vinculables');
+    const reference = String(req.body.referencia || '').trim().toUpperCase();
+    if (!/^E001-\d{1,8}$/.test(reference)) throw new Error('Usa el número del recibo emitido, por ejemplo E001-123');
+    await order.update({ referencia_comprobante: reference }, { transaction });
+    await OrdenServicioEvento.create({ id_orden_servicio: order.id_orden_servicio, tipo: 'referencia_rhe', detalle: 'Referencia RHE registrada por el operador (sin validación SUNAT): ' + reference, creado_por: userId(req) }, { transaction });
+    await transaction.commit();
+    res.json({ message: 'Referencia registrada. El ERP no emite ni valida este RHE.' });
+  } catch (error) { await transaction.rollback(); res.status(400).json({ message: error.message }); }
+};
+exports.emailTicket = async (req, res) => {
+  try {
+    const order = await findOrder(req, req.params.id);
+    if (!order) return res.status(404).json({ message: 'Orden no encontrada' });
+    const client = order.cliente_servicio_id ? await ClienteServicio.findOne({ where: { id_cliente_servicio: order.cliente_servicio_id, ...tenantWhere(req) } }) : null;
+    if (!client?.email) return res.status(400).json({ message: 'Registra el correo en la ficha del cliente antes de enviar' });
+    const mail = require('../services/mail.service');
+    if (mail.getMailMode() !== 'live' || !mail.smtpConfigured()) return res.status(503).json({ message: 'Envío no disponible: falta activar y configurar el correo del ERP. Puedes imprimir el ticket.' });
+    const parts = await OrdenServicioRepuesto.findAll({ where: { id_orden_servicio: order.id_orden_servicio, estado_stock: ['no_aplica', 'reservado', 'consumido'] } });
+    const amounts = require('../services/workshop-amounts.service').workshopAmounts(order, parts);
+    const sale = order.venta_id ? await require('../models').Venta.unscoped().findByPk(order.venta_id) : null;
+    const text = [ 'CRISCOM · TICKET INTERNO NO FISCAL', order.codigo, order.cliente,
+      ...parts.map(p => p.cantidad + ' × ' + p.descripcion + ': ' + order.moneda + ' ' + (Number(p.cantidad) * Number(p.precio_unitario)).toFixed(2)),
+      'Mano de obra: ' + order.costo_mano_obra, 'Recargo: ' + order.recargo, 'Descuento: ' + order.descuento,
+      'TOTAL ' + order.moneda + ' ' + amounts.total.toFixed(2), 'Pagado: ' + order.adelanto,
+      'Saldo: ' + Math.max(0, amounts.total - Number(order.adelanto)).toFixed(2),
+      'Productos: ' + (sale?.comprobante_emitido ? sale.serie + '-' + sale.correlativo : 'Comprobante pendiente / no corresponde'),
+      'Honorarios: ' + (order.referencia_comprobante || 'Recibo pendiente / no corresponde'),
+      'Este resumen no sustituye la boleta, factura ni recibo por honorarios.' ].join('\n');
+    await mail.createTransport('live').sendMail({ from: process.env.MAIL_FROM, to: client.email, subject: mail.oneLine('CRISCOM · Ticket ' + order.codigo), text });
+    await OrdenServicioEvento.create({ id_orden_servicio: order.id_orden_servicio, tipo: 'ticket_correo', detalle: 'Ticket enviado al correo registrado del cliente', creado_por: userId(req) });
+    res.json({ message: 'Ticket enviado al correo registrado' });
+  } catch (error) { res.status(500).json({ message: 'No se pudo completar el envío del ticket' }); }
+};
+
+exports.billingSummary = async (req, res) => {
+  try {
+    const order = await findOrder(req, req.params.id);
+    if (!order) return res.status(404).json({ message: 'Orden no encontrada' });
+    const parts = await OrdenServicioRepuesto.findAll({ where: { id_orden_servicio: order.id_orden_servicio, estado_stock: ['no_aplica', 'reservado', 'consumido'] } });
+    const amounts = require('../services/workshop-amounts.service').workshopAmounts(order, parts);
+    const sale = order.venta_id ? await require('../models').Venta.unscoped().findByPk(order.venta_id) : null;
+    res.json({ productos: amounts.productTotal, honorarios: amounts.serviceTotal,
+      venta_id: sale?.venta_id, puede_emitir_productos: sale?.categoria_ingreso === 'productos_taller' && !sale.comprobante_emitido,
+      estado_productos: sale?.comprobante_emitido ? 'aceptado' : sale?.estado_comprobante || 'sin_emitir',
+      documento_productos: sale?.comprobante_emitido ? sale.serie + '-' + sale.correlativo : null,
+      referencia_honorarios: order.referencia_comprobante || null,
+      modo_sunat: require('../services/sunat.service').sunatMode(),
+    });
+  } catch (error) { res.status(400).json({ message: error.message }); }
 };

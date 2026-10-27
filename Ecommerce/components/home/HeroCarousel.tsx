@@ -6,7 +6,7 @@
 // teclado (flechas) y gesto tactil. Video con boton Pausar y respeto a prefers-reduced-motion.
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, ChevronLeft, ChevronRight, ImageIcon, MessageCircle, Pause, Play, RefreshCw, AlertTriangle } from "lucide-react"
+import { ArrowRight, ChevronLeft, ChevronRight, Cpu, MessageCircle, Pause, Play, RefreshCw, AlertTriangle } from "lucide-react"
 import { homeService, type HomeBanner, type HomeStats } from "@/services/homeService"
 import { cleanTitulo, waHref } from "@/components/home/homeShared"
 import { useConfigPublica } from "@/hooks/useSocialLinks"
@@ -98,14 +98,21 @@ const HeroCarousel = () => {
 
   if (total === 0) {
     return (
-      <section className="sec-first pg-wrap" aria-label="Banners destacados">
-        <div className="box">
-          <span className="tile"><ImageIcon className="pg-ic" aria-hidden /></span>
-          <div className="grow">
-            <h3>No hay promociones publicadas por ahora</h3>
-            <p>Explora el catálogo completo mientras preparamos las novedades.</p>
+      <section className="sec-first pg-wrap" aria-label="Tecnología Criscom Group">
+        <div className="hero hero-welcome">
+          <div className="hero-txt">
+            <div>
+              <p className="hero-eyebrow"><Cpu className="pg-ic" aria-hidden /> CRISCOM GROUP</p>
+              <h1>Tu próxima idea.<br /><span>Tu próximo equipo.</span></h1>
+              <p className="hero-description">Tecnología para jugar, crear y trabajar. Encuentra tu equipo o arma una PC a tu medida con nosotros.</p>
+            </div>
+            <div className="hero-ctas">
+              <Link className="btn btn-light" href="/catalogo">Explorar catálogo <ArrowRight size={18} aria-hidden /></Link>
+              <Link className="btn btn-hero-secondary" href="/armar-pc">Armar mi PC <ArrowRight size={18} aria-hidden /></Link>
+            </div>
+            <p className="hero-caption">Equipos · Componentes · Servicio técnico</p>
           </div>
-          <Link className="btn btn-outline" href="/catalogo">Ver catálogo</Link>
+          <div className="hero-media welcome-media" role="img" aria-label="Computadora, laptop y componentes tecnológicos" />
         </div>
       </section>
     )

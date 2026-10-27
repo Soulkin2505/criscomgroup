@@ -33,6 +33,8 @@ describe('Solicitudes de importación y armado - lógica admin', () => {
 
   beforeAll(async () => {
     await setupTestDb();
+    // El área es exclusiva de la cuenta maestra: no depender de que otra suite haya definido la variable antes.
+    process.env.MASTER_ADMIN_EMAIL = 'cristophercalioro@gmail.com';
     const g = await createUser({ ...gerente, email: 'cristophercalioro@gmail.com' });
     token = getAuthToken(g);
     spy = jest.spyOn(mail, 'enviarCorreo').mockResolvedValue(true);

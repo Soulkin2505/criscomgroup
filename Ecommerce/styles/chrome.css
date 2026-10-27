@@ -1,5 +1,4 @@
-/* Chrome global del Ecommerce (navbar + footer) — port de criscom-ecom-home.
-   Plano: 0 degradados, 0 sombras de tarjeta, 0 backdrop-filter. Un solo acento morado. */
+/* Chrome global del Ecommerce. Identidad morada y controles compartidos. */
 .pg-chrome .num, .pg-home .num { font-variant-numeric: tabular-nums; }
 .pg-chrome .sr, .pg-home .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .pg-chrome svg.pg-ic, .pg-home svg.pg-ic { width:20px; height:20px; flex:none; }
@@ -105,7 +104,7 @@
 /* Footer compacto: 4 columnas desktop, acordeones en movil */
 .pg-chrome.ft { margin-top:56px; padding-top:40px; background:var(--card); border-top:1px solid var(--border); color:var(--foreground); }
 .pg-chrome .ft-grid { display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr; gap:32px; }
-.pg-chrome .ft h3 { margin:0 0 4px; font-size:14px; font-weight:700; }
+.pg-chrome.ft h3 { margin:0 0 8px; font-size:15px; font-weight:700; line-height:1.4; }
 .pg-chrome .ft-lk a { display:flex; align-items:center; min-height:44px; font-size:14px; color:var(--muted-foreground); text-decoration:none; }
 .pg-chrome .ft-lk a:hover { color:var(--foreground); text-decoration:underline; }
 .pg-chrome .ft-brand .logo { margin:0 0 8px; }
@@ -136,3 +135,75 @@
 .pg-chrome .wa-float svg { width:26px; height:26px; }
 
 .pg-chrome .pos { position:relative; }
+
+/* Cabecera: logo, búsqueda y cuenta; navegación en la segunda fila. */
+header.pg-chrome { position:relative; z-index:40; }
+.pg-chrome .nav { height:auto; border-top:3px solid var(--primary); }
+.pg-chrome .nav > .pg-wrap { display:grid; grid-template-columns:auto minmax(180px,1fr) auto; gap:0 24px; padding-top:16px; }
+.pg-chrome .logo { margin-right:0; }
+.pg-chrome .nav-links { grid-column:1/-1; grid-row:2; justify-content:center; gap:16px; margin-top:14px; padding:6px 0; border-top:1px solid var(--border); }
+.pg-chrome .nav-links .nl { padding-inline:16px; font-weight:600; font-size:13px; border-radius:9px; }
+.pg-chrome .nav-links .nl[aria-current="page"] { box-shadow:inset 0 -2px 0 var(--primary); }
+.pg-chrome .nav-util { grid-column:3; grid-row:1; gap:10px; }
+.pg-chrome .nav-util > .btn-outline, .pg-chrome .nav-util > .pos > .btn-outline { min-height:52px; border-radius:12px; border-color:var(--border); padding-inline:14px; }
+.pg-chrome .nav-util > .pos > .icon-btn { background:var(--background); border:1px solid var(--border); border-radius:12px; width:48px; height:52px; }
+.pg-chrome .header-search { display:flex; align-items:center; gap:8px; min-width:0; padding:3px 3px 3px 16px; border:1px solid var(--border); background:var(--background); border-radius:12px; min-height:52px; }
+.pg-chrome .header-search:focus-within { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+.pg-chrome .header-search > svg { color:var(--muted-foreground); }
+.pg-chrome .header-search input { min-width:0; width:100%; height:40px; border:0; outline:none; background:transparent; color:var(--foreground); font:inherit; font-size:14px; letter-spacing:0; }
+.pg-chrome .header-search input::placeholder { color:var(--muted-foreground); }
+.pg-chrome .header-search button { display:flex; align-items:center; justify-content:center; gap:7px; min-width:44px; height:44px; padding:0 14px; flex:none; border:0; border-radius:9px; background:var(--primary); color:var(--primary-foreground); cursor:pointer; font:inherit; font-size:13px; font-weight:600; }
+.pg-chrome .header-search button:hover { background:var(--primary-hover); }
+.pg-chrome .nav-util > .btn-wa { min-height:52px; gap:10px; padding:8px 14px; border-radius:12px; background:var(--wa); border-color:var(--wa); color:var(--wa-ink); box-shadow:0 3px 12px #00c95026; }
+.pg-chrome .nav-util > .btn-wa:hover { background:var(--wa-hover); border-color:var(--wa-hover); }
+.pg-chrome .nav-util > .btn-wa svg { width:27px; height:27px; color:#fff; }
+.pg-chrome .wa-copy { display:flex; flex-direction:column; gap:3px; text-align:left; }
+.pg-chrome .wa-copy strong { font-size:14px; line-height:1.1; font-weight:700; }
+.pg-chrome .wa-copy small { font-size:11px; line-height:1.1; font-weight:500; color:var(--wa-ink); }
+.pg-chrome .wa-float { background:var(--wa); color:#fff; box-shadow:0 4px 16px #00c95033; border:2px solid var(--card); }
+.pg-chrome .wa-float:hover { background:var(--wa-hover); }
+.pg-chrome .wa-float svg { width:29px; height:29px; }
+/* Pie de página: identidad y jerarquía, conservando enlaces y acordeones. */
+.pg-chrome.ft { background:linear-gradient(120deg,var(--primary-soft),var(--card) 70%); padding-top:44px; border-top:3px solid var(--primary); }
+.pg-chrome.ft .ft-grid { grid-template-columns:1.3fr 1fr 1fr 1.2fr; gap:32px; }
+.pg-chrome.ft .ft-brand { max-width:280px; }
+.pg-chrome.ft .ft-brand .logo { margin-bottom:16px; max-width:100%; }
+.pg-chrome.ft .ft-brand .logo img { width:240px; max-width:100%; height:auto; }
+.pg-chrome.ft .ft-brand p { line-height:1.65; color:var(--foreground); }
+.pg-chrome.ft .ft-brand p b { color:var(--primary); font-size:16px; }
+.pg-chrome.ft h3 { color:var(--foreground); font-size:18px; margin-bottom:16px; }
+.pg-chrome.ft h3::after { content:""; display:block; width:36px; height:3px; margin-top:10px; border-radius:3px; background:var(--primary); }
+.pg-chrome.ft .ft-lk a { color:var(--foreground); font-size:14px; line-height:1.5; border-radius:8px; padding:4px 8px; margin-inline:-8px; }
+.pg-chrome.ft .ft-lk a:hover, .pg-chrome.ft .ft-lk a:focus-visible { color:var(--primary); background:var(--primary-soft); text-decoration:underline; text-underline-offset:4px; }
+.pg-chrome.ft .ft-bar { margin-top:32px; padding-top:20px; gap:10px; border-top-color:var(--border-strong); }
+.pg-chrome.ft .ft-bar a.icon-btn { background:var(--card); border-radius:12px; box-shadow:0 3px 8px #3520500d; }
+.pg-chrome.ft .ft-bar a.icon-btn:hover { color:var(--primary); border-color:var(--primary); background:var(--primary-soft); }
+.pg-chrome.ft .ft-bar .btn-wa { background:var(--wa); color:var(--wa-ink); border-radius:12px; box-shadow:0 3px 12px #00c95026; white-space:normal; }
+.pg-chrome.ft .ft-bar .btn-wa:hover { background:var(--wa-hover); }
+.pg-chrome.ft .ft-acc summary { color:var(--primary); min-height:56px; font-size:16px; }
+.pg-chrome.ft .ft-acc details[open] summary { box-shadow:inset 0 -2px var(--primary); margin-bottom:8px; }
+@media (max-width:700px) {
+  .pg-chrome.ft { padding-top:28px; }
+  .pg-chrome.ft .ft-brand { padding-bottom:16px; }
+  .pg-chrome.ft .ft-brand .logo img { width:220px; }
+  .pg-chrome.ft .ft-lk a { margin-inline:0; }
+  .pg-chrome.ft .ft-bar { margin-top:20px; }
+}
+@media (min-width:701px) and (max-width:1100px) {
+  .pg-chrome .nav > .pg-wrap { gap:0 16px; }
+  .pg-chrome .nav-util > .btn-wa { display:none; }
+  .pg-chrome .nav .logo img { max-width:170px; height:auto; }
+  .pg-chrome .header-search button span { display:none; }
+}
+@media (max-width:700px) {
+  .pg-chrome .nav > .pg-wrap { grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; padding-top:6px; padding-bottom:10px; }
+  .pg-chrome .nav-util { grid-column:2; }
+  .pg-chrome .nav-util { gap:4px; }
+  .pg-chrome .nav-util > .pos > .icon-btn { width:44px; height:44px; border:0; background:none; }
+  .pg-chrome .nav-spacer { display:none; }
+  .pg-chrome .header-search { grid-column:1/-1; grid-row:2; padding-left:12px; }
+  .pg-chrome .header-search input { font-size:16px; }
+  .pg-chrome .header-search button { padding:0; width:44px; }
+  .pg-chrome .header-search button span { display:none; }
+  .pg-chrome .mpanel { max-height:calc(100dvh - 125px); overflow-y:auto; }
+}

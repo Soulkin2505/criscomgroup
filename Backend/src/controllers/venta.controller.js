@@ -1052,6 +1052,10 @@ const ventaController = {
         return res.status(404).json({ message: 'Venta no encontrada' });
       }
 
+      if (venta.orden_servicio_id) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Esta venta pertenece a una orden de taller; no se puede eliminar desde ventas' });
+      }
       // Solo se bloquea lo que SUNAT ya conoce: comprobante emitido o documento electronico creado.
       // (Antes bastaba tipo_documento='0' --truthy-- y NINGUNA venta del POS se podia anular.)
       if (venta.comprobante_emitido) {

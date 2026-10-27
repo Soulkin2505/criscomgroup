@@ -5,17 +5,23 @@ const axios = require('axios');
 const AdmZip = require('adm-zip');
 const { SignedXml } = require('xml-crypto');
 const forge = require('node-forge');
+const { readSheet } = require('./ruc-sheet.service');
 
 
-// Modo SUNAT: solo el valor exacto 'production' habilita produccion. Cualquier otro
-// (vacio, typo, mayusculas) cae de forma segura a pruebas/beta y se avisa una sola vez.
+// Modo SUNAT del SERVIDOR: es el techo, no el modo final de cada empresa (ver companyMode).
+//   SUNAT_MODE=sandbox     -> todo en pruebas (desarrollo / staging).
+//   SUNAT_MODE=production  -> produccion permitida; cada empresa pasa sola al completar su configuracion.
+//   sin definir            -> igual que production solo si NODE_ENV=production; en otro caso, pruebas.
+//   valor invalido         -> pruebas (falla cerrado) y se avisa una sola vez.
 let modeWarned = false;
 const sunatModeInfo = () => {
   const raw = process.env.SUNAT_MODE;
   const value = String(raw ?? '').trim();
-  const valid = value === 'production' || value === 'sandbox';
-  const mode = value === 'production' ? 'production' : 'sandbox';
-  const warning = valid ? null : `SUNAT_MODE ${raw === undefined || value === '' ? 'no esta definido' : 'tiene un valor invalido'}: se usa modo pruebas (beta). Define SUNAT_MODE=sandbox o SUNAT_MODE=production.`;
+  const unset = value === '';
+  const auto = unset && process.env.NODE_ENV === 'production';
+  const valid = value === 'production' || value === 'sandbox' || auto;
+  const mode = value === 'production' || auto ? 'production' : 'sandbox';
+  const warning = valid ? null : `SUNAT_MODE ${unset ? 'no esta definido' : 'tiene un valor invalido'}: se usa modo pruebas (beta). Define SUNAT_MODE=sandbox o SUNAT_MODE=production.`;
   if (warning && !modeWarned) { modeWarned = true; console.warn(`[sunat] ${warning}`); }
   return { mode, valid, warning };
 };
@@ -100,7 +106,7 @@ const signingMaterial = config => {
 const signXml = (xml, company) => {
   const config = configFor(company);
   if (!config.pfxPath && (!config.privateKeyPath || !config.certificatePath)) {
-    if (sunatMode() === 'sandbox') return xml;
+    if (companyMode(company).mode === 'sandbox') return xml;
     throw new Error('Faltan certificado y clave privada SUNAT');
   }
   const { privateKey, certificate } = signingMaterial(config);
@@ -123,14 +129,20 @@ const sendBill = async ({ fileName, signedXml, company }) => {
   zip.addFile(`${fileName}.xml`, Buffer.from(signedXml, 'utf8'));
   const content = zip.toBuffer().toString('base64');
   const config = configFor(company);
-  if (sunatMode() === 'sandbox' && !config.solUser) return { sandbox: true, code: '0', description: 'XML generado en sandbox; no enviado a SUNAT', cdr: null };
+  const { mode, motivo } = companyMode(company);
+  // Pruebas manuales = envio a SUNAT desactivado: se genera y firma el XML, pero no sale del servidor.
+  if (mode === 'sandbox' && (motivo === 'manual' || !config.solUser)) {
+    return { sandbox: true, code: '0', description: motivo === 'manual' ? 'Modo pruebas activado manualmente: XML generado, no enviado a SUNAT' : 'XML generado en sandbox; no enviado a SUNAT', cdr: null };
+  }
   const username = `${config.ruc}${config.solUser}`;
   const password = config.solPassword;
   if (!username || !password) throw new Error('Credenciales SOL secundarias no configuradas');
   const soap = `<?xml version="1.0"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ser="http://service.sunat.gob.pe" xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"><soapenv:Header><wsse:Security><wsse:UsernameToken><wsse:Username>${escapeXml(username)}</wsse:Username><wsse:Password>${escapeXml(password)}</wsse:Password></wsse:UsernameToken></wsse:Security></soapenv:Header><soapenv:Body><ser:sendBill><fileName>${fileName}.zip</fileName><contentFile>${content}</contentFile></ser:sendBill></soapenv:Body></soapenv:Envelope>`;
   let response;
   try {
-    response = await axios.post(config.billServiceUrl || (sunatMode() === 'production' ? PRODUCTION_URL : BETA_URL), soap, { headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: 'sendBill' }, timeout: 30000 });
+    // En pruebas siempre va a beta, aunque el servidor defina una URL propia de produccion.
+    const url = mode === 'production' ? (config.billServiceUrl || PRODUCTION_URL) : BETA_URL;
+    response = await axios.post(url, soap, { headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: 'sendBill' }, timeout: 30000 });
   } catch (error) {
     const body = String(error.response?.data || '');
     const faultCode = body.match(/<(?:\w+:)?faultcode[^>]*>([^<]+)</i)?.[1]?.trim();
@@ -194,4 +206,32 @@ const readiness = company => {
   };
 };
 
-module.exports = { buildInvoiceXml, signXml, sendBill, saveArtifacts, configFor, sunatMode, sunatModeInfo, readiness };
+// Modo REAL de una empresa. Produccion exige: servidor que la permita, sin pruebas manuales y,
+// la primera vez, acceso SOL + certificado + ficha RUC. Una vez activada (sunat_produccion_desde)
+// ya no vuelve sola a pruebas: si luego falta el certificado, la emision falla en vez de irse a beta.
+const companyMode = company => {
+  const server = sunatModeInfo();
+  const ready = readiness(company);
+  const pendientes = [];
+  if (!ready.sol) pendientes.push('acceso SOL');
+  if (!ready.certificate) pendientes.push('certificado digital');
+  if (!company || !readSheet(company)) pendientes.push('ficha RUC');
+  const activada = Boolean(company?.sunat_produccion_desde);
+  let mode = 'sandbox';
+  let motivo = 'incompleto';
+  if (server.mode !== 'production') motivo = 'servidor';
+  else if (company?.sunat_pruebas_manual) motivo = 'manual';
+  else if (activada || !pendientes.length) { mode = 'production'; motivo = 'automatico'; }
+  return { mode, motivo, pendientes, activada, servidor: server.mode, servidor_valido: server.valid, aviso_servidor: server.warning };
+};
+
+// Deja constancia del paso automatico a produccion (una sola vez). Llamar tras cambios de configuracion y al emitir.
+const activateIfReady = async (company, options = {}) => {
+  if (!company || company.sunat_produccion_desde) return false;
+  if (companyMode(company).mode !== 'production') return false;
+  await company.update({ sunat_produccion_desde: new Date() }, options);
+  console.info(`[sunat] empresa ${company.id_company} (${company.ruc}) paso automaticamente a produccion`);
+  return true;
+};
+
+module.exports = { buildInvoiceXml, signXml, sendBill, saveArtifacts, configFor, sunatMode, sunatModeInfo, readiness, companyMode, activateIfReady };

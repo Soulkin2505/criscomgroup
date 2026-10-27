@@ -36,6 +36,11 @@ export function useEmpEstado(canStatus: boolean, canSheet: boolean) {
   }, [canStatus, canSheet])
   useEffect(() => { void load() }, [load])
 
-  const ficha: EmpFichaCtl = { sheet, error: sheetError, loading, onSheet: setSheet, reload: () => void load() }
+  // La ficha RUC puede cambiar el modo SUNAT (paso automatico a produccion): se relee el estado de la cabecera.
+  const onSheet = (s: RucSheet) => {
+    setSheet(s)
+    if (canStatus) void fetchIntegrations().then(setStatus).catch(() => {})
+  }
+  const ficha: EmpFichaCtl = { sheet, error: sheetError, loading, onSheet, reload: () => void load() }
   return { status, statusError, sheetError, sheet, ficha, reload: load }
 }

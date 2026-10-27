@@ -8,6 +8,10 @@ const DEFAULT_LINKS = Object.freeze({
   whatsapp_number: '51904589554',
 });
 
+// Correo de soporte/ventas visible en la web (no vive en Company: es fijo para el negocio,
+// no depende de cual RUC se muestre como emisor publico).
+const SOPORTE_EMAIL = 'ventas@criscomgroup.com.pe';
+
 const allowedHosts = {
   instagram_url: ['instagram.com', 'www.instagram.com', 'm.instagram.com', 'instagr.am'],
   facebook_url: ['facebook.com', 'www.facebook.com', 'm.facebook.com', 'web.facebook.com', 'fb.com', 'www.fb.com', 'fb.me'],
@@ -21,14 +25,25 @@ const findPrimaryCompany = () => Company.findOne({
   order: [['emisor_predeterminado', 'DESC'], ['id_company', 'ASC']],
 });
 
+// La empresa cuyo RUC/razon social se muestra en la web: la marcada explicitamente con
+// mostrar_en_web (una sola a la vez); si ninguna fue elegida aun, se cae a la emisora
+// predeterminada para no dejar la web sin datos de contacto.
+const findPublicCompany = async () => (await Company.findOne({ where: { mostrar_en_web: true } })) || findPrimaryCompany();
+
 // Las URLs usan ?? para que un valor vacio guardado (red borrada) no vuelva al valor por defecto;
 // solo null/undefined (nunca configurado) cae al default. WhatsApp siempre necesita un numero.
+// Razon social/RUC/direccion son datos publicos de registro (exigidos por Culqi e INDECOPI),
+// no secretos: nunca se incluyen sol_user/sol_pass/cert_path/client_*, eso sigue vedado.
 const serialize = (company) => ({
   instagram_url: company?.instagram_url ?? DEFAULT_LINKS.instagram_url,
   facebook_url: company?.facebook_url ?? DEFAULT_LINKS.facebook_url,
   tiktok_url: company?.tiktok_url ?? DEFAULT_LINKS.tiktok_url,
   youtube_url: company?.youtube_url ?? DEFAULT_LINKS.youtube_url,
   whatsapp_number: company?.whatsapp_number || DEFAULT_LINKS.whatsapp_number,
+  razon_social: company?.razon_social || null,
+  ruc: company?.ruc || null,
+  direccion: company?.direccion || null,
+  correo: SOPORTE_EMAIL,
 });
 
 const normalizeWhatsapp = (value) => {
@@ -52,17 +67,22 @@ const validateLink = (field, value) => {
 
 const getPublicSocialLinks = async (_req, res) => {
   try {
-    return res.json(serialize(await findPrimaryCompany()));
+    return res.json(serialize(await findPublicCompany()));
   } catch (error) {
     console.error('Error al obtener redes sociales:', error);
-    return res.json(DEFAULT_LINKS);
+    return res.json({ ...DEFAULT_LINKS, razon_social: null, ruc: null, direccion: null, correo: SOPORTE_EMAIL });
   }
 };
 
 const getAdminSocialLinks = async (_req, res) => {
   try {
-    const company = await findPrimaryCompany();
-    return res.json({ company_id: company?.id_company || null, ...serialize(company) });
+    const company = await findPublicCompany();
+    const companias = await Company.findAll({ order: [['emisor_predeterminado', 'DESC'], ['id_company', 'ASC']] });
+    return res.json({
+      company_id: company?.id_company || null,
+      ...serialize(company),
+      empresas: companias.map(c => ({ id_company: c.id_company, razon_social: c.razon_social, ruc: c.ruc, mostrar_en_web: c.mostrar_en_web })),
+    });
   } catch (error) {
     console.error('Error al obtener redes sociales del ERP:', error);
     return fail(res, 500, 'No se pudo obtener la configuración');
@@ -71,7 +91,7 @@ const getAdminSocialLinks = async (_req, res) => {
 
 const updateSocialLinks = async (req, res) => {
   try {
-    const company = await findPrimaryCompany();
+    const company = await findPublicCompany();
     if (!company) return fail(res, 404, 'Primero debes registrar una empresa emisora');
 
     const updates = {};

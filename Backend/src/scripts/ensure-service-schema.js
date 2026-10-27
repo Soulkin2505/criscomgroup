@@ -122,6 +122,14 @@ const ensureServiceSchema = async () => {
   };
   for (const [name, definition] of Object.entries(saleColumns))
     if (!sales[name]) await qi.addColumn('ventas', name, definition);
+  const [paymentColumn] = await sequelize.query("SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes_servicio_pagos' AND COLUMN_NAME = 'metodo'");
+  if (paymentColumn[0] && !paymentColumn[0].COLUMN_TYPE.includes("'yape'")) {
+    await qi.changeColumn('ordenes_servicio_pagos', 'metodo', { type: DataTypes.ENUM('efectivo', 'pos', 'qr', 'transferencia', 'otro', 'tarjeta', 'yape', 'plin', 'pago_link'), allowNull: false });
+  }
+  const [expenseColumn] = await sequelize.query("SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'gastos_taller' AND COLUMN_NAME = 'categoria'");
+  if (expenseColumn[0] && !expenseColumn[0].COLUMN_TYPE.includes("'mano_obra_tercerizada'")) {
+    await qi.changeColumn('gastos_taller', 'categoria', { type: DataTypes.ENUM('insumos', 'herramientas', 'repuestos_stock', 'alquiler', 'servicios', 'transporte', 'limpieza', 'software', 'capacitacion', 'mano_obra_tercerizada', 'otros'), allowNull: false, defaultValue: 'otros' });
+  }
   // Backfill de tokens de seguimiento para órdenes existentes sin token.
   if (!current.token_seguimiento) {
     const crypto = require("crypto");

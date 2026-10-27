@@ -17,7 +17,7 @@ const I = (Icon: LucideIcon, size = 16) => <Icon className="ic" size={size} stro
 const CATS: [CategoriaGasto, string, string][] = [
   ["insumos", "Insumos", "Insumos (pasta térmica, alcohol, estaño)"], ["herramientas", "Herramientas", "Herramientas y equipos"],
   ["repuestos_stock", "Repuestos a stock", "Repuestos a stock"], ["alquiler", "Alquiler", "Alquiler del local"],
-  ["servicios", "Servicios", "Servicios (luz, agua, internet)"], ["transporte", "Transporte", "Transporte y envíos"],
+  ["mano_obra_tercerizada", "Técnico externo", "Mano de obra tercerizada"], ["servicios", "Servicios", "Servicios (luz, agua, internet)"], ["transporte", "Transporte", "Transporte y envíos"],
   ["limpieza", "Limpieza", "Limpieza y mantenimiento"], ["software", "Software", "Software y licencias"],
   ["capacitacion", "Capacitación", "Capacitación del personal"], ["otros", "Otros", "Otros"],
 ]

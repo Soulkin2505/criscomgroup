@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   ArrowRight, Camera, Check, ChevronDown, CircleAlert, CircleCheck, Clock, FileText, Image as ImageIcon,
   Key, Laptop, Plus, RefreshCw, Upload, User, Wrench, X, type LucideIcon,
@@ -45,12 +45,12 @@ const ROUTE: Record<WorkOrderType, string> = { servicio_tecnico: "/services/tech
 
 type Form = {
   tipo: WorkOrderType; subtipo_trabajo: string; tareas_solicitadas: string[]
-  cliente: string; telefono: string; documento: string; equipo: string; numero_serie: string; detalle: string
+  email: string; cliente: string; telefono: string; documento: string; equipo: string; numero_serie: string; detalle: string
   estado_fisico: string[]; accesorios_recibidos: string[]; credencial_temporal: string
   recepcion_conforme: boolean; whatsapp_consentimiento: boolean
 }
-const blank = (): Form => ({
-  tipo: "servicio_tecnico", subtipo_trabajo: "", tareas_solicitadas: [], cliente: "", telefono: "", documento: "", equipo: "", numero_serie: "",
+const blank = (tipo: WorkOrderType = "servicio_tecnico"): Form => ({
+  tipo, subtipo_trabajo: tipo === "mantenimiento" ? "preventivo" : "", tareas_solicitadas: [], email: "", cliente: "", telefono: "", documento: "", equipo: "", numero_serie: "",
   detalle: "", estado_fisico: [], accesorios_recibidos: [], credencial_temporal: "", recepcion_conforme: false, whatsapp_consentimiento: false,
 })
 type Created = { id: number; codigo: string; form: Form }
@@ -89,7 +89,13 @@ function Chips({ id, label, ph, hint, list, onChange, disabled }: { id: string; 
 export default function QuickIntakePage() {
   useDocumentTitle("Nuevo ingreso")
   const navigate = useNavigate()
-  const [f, setF] = useState<Form>(blank)
+  const [params] = useSearchParams()
+  const requestedType = params.get("tipo")
+  const initialType: WorkOrderType = requestedType === "mantenimiento" || requestedType === "armado_pc" ? requestedType : "servicio_tecnico"
+  const [f, setF] = useState<Form>(() => blank(initialType))
+  useEffect(() => {
+    setF(current => ({ ...current, tipo: initialType, subtipo_trabajo: initialType === "mantenimiento" ? "preventivo" : "" }))
+  }, [initialType])
   const [photos, setPhotos] = useState<File[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [claveOpen, setClaveOpen] = useState(false)
@@ -140,6 +146,7 @@ export default function QuickIntakePage() {
 
   const validate = () => {
     const e: Record<string, string> = {}
+    if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = "Revisa el correo del cliente."
     if (f.telefono && !/^[+]?[0-9 -]{7,20}$/.test(f.telefono)) e.telefono = "Escribe el WhatsApp con código de país, solo números."
     if (f.documento && !/^([0-9]{8}|[0-9]{11})$/.test(f.documento)) e.documento = "El DNI tiene 8 dígitos y el RUC 11."
     return e
@@ -304,6 +311,9 @@ export default function QuickIntakePage() {
                       <Field id="ting-telefono" label="WhatsApp" hint="Incluye código de país para abrir WhatsApp correctamente." error={errors.telefono}>
                         <input className="in" id="ting-telefono" inputMode="tel" placeholder="51987654321" value={f.telefono} disabled={dis}
                           aria-invalid={!!errors.telefono} aria-describedby={`ting-telefono-h`} onChange={e => set("telefono", e.target.value)} />
+                      </Field>
+                      <Field id="ting-email" label="Correo electrónico" hint="Para enviar el ticket al cliente." error={errors.email}>
+                        <input className="in" id="ting-email" type="email" maxLength={160} value={f.email} disabled={dis} onChange={e => set("email", e.target.value)} />
                       </Field>
                       <Field id="ting-documento" label="DNI / RUC" hint="8 dígitos para DNI o 11 para RUC." error={errors.documento}>
                         <input className="in" id="ting-documento" inputMode="numeric" value={f.documento} disabled={dis}

@@ -53,3 +53,13 @@ export async function obtenerTodosLosCierresCaja() {
   const response = await api.get("/cierre-caja");
   return response.data;
 }
+
+export interface DailyResult {
+  cobrado: number; cobrado_ventas: number; cobrado_taller: number;
+  egresos_efectivo: number; efectivo_neto: number;
+  por_metodo: Record<string, { total: number; cantidad: number }>;
+  ingresos_productos: number; ingresos_servicios: number; costo_productos: number; costo_servicios: number;
+  gastos_generales: number; margen_productos: number | null; margen_servicios: number; resultado_estimado: number | null;
+  costos_sin_registrar: number; criterio: string; alcance: string;
+}
+export const obtenerResumenDiario = async (fecha: string): Promise<DailyResult> => (await api.get('/cierre-caja/resumen-diario', { params: { fecha } })).data;

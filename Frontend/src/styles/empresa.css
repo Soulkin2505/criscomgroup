@@ -38,20 +38,12 @@
 .pg-empresa .btn[aria-disabled=true]:hover{background:hsl(var(--muted))}
 .pg-empresa .lnk{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 8px;color:hsl(var(--primary));font:600 14px/1 inherit;background:none;border:0;border-radius:8px;cursor:pointer}
 .pg-empresa .lnk:hover{background:hsl(var(--sidebar-hover))}
-.pg-empresa .lay{display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:start}
-.pg-empresa .rail{position:sticky;top:0;display:flex;flex-direction:column;gap:2px;padding-top:0}
-.pg-empresa .ri{display:flex;align-items:center;gap:8px;width:100%;height:44px;padding:0 10px;border:0;border-radius:8px;background:none;font:500 14px/1.2 inherit;color:hsl(var(--nav-fg));text-align:left;cursor:pointer}
-.pg-empresa .ri:hover{background:hsl(var(--sidebar-hover))}
-.pg-empresa .ri[aria-current=true]{background:hsl(var(--sidebar-active));color:hsl(var(--sidebar-active-fg));font-weight:600}
-.pg-empresa .ri .fg{margin-left:auto;display:inline-flex;align-items:center}
 .pg-empresa .dot{width:8px;height:8px;border-radius:50%;background:hsl(var(--primary))}
-.pg-empresa .crs{display:flex;gap:6px;overflow-x:auto;position:sticky;top:0;z-index:3;background:hsl(var(--main-bg));padding:2px 0;scrollbar-width:none}
-.pg-empresa .chip{flex:none;display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 12px;border:1px solid hsl(var(--border-strong));border-radius:8px;background:hsl(var(--card));font:500 13px/1 inherit;color:hsl(var(--nav-fg));cursor:pointer;white-space:nowrap}
-.pg-empresa .chip[aria-current=true]{background:hsl(var(--sidebar-active));border-color:hsl(var(--sidebar-active));color:hsl(var(--sidebar-active-fg));font-weight:600}
 .pg-empresa .cards{display:flex;flex-direction:column;gap:24px;padding-top:4px;min-width:0}
 .pg-empresa .cd{position:relative;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:12px;padding:12px 16px 16px;min-width:0}
 .pg-empresa .cd>.lg{position:absolute;top:-12px;left:10px;display:flex;align-items:baseline;gap:10px;padding:1px 8px;background:hsl(var(--main-bg));border-radius:6px;font-size:15px;font-weight:600;line-height:22px;max-width:calc(100% - 20px)}
 .pg-empresa .cd>.lg>span{white-space:nowrap}
+.pg-empresa .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .pg-empresa .cd>.lg small{min-width:0;font-size:12.5px;font-weight:400;color:hsl(var(--nav-fg-2));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pg-empresa .gd{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px}
 .pg-empresa .g2{grid-column:span 2}
@@ -150,7 +142,6 @@
 .pg-empresa .rp{padding:8px 12px;background:hsl(var(--card));border:1px dashed hsl(var(--border-strong));border-radius:12px;font-size:13px;color:hsl(var(--nav-fg-2));width:100%}
 @container (max-width:1099px){
 .pg-empresa .tb{padding:0 12px}
-.pg-empresa .lay{grid-template-columns:176px minmax(0,1fr)}
 .pg-empresa .g2{grid-column:span 3}
 .pg-empresa .g4{grid-column:span 5}
 .pg-empresa .g6{grid-column:span 7}
@@ -166,7 +157,6 @@
 .pg-empresa .tb[aria-selected=true]{background:hsl(var(--sidebar-active));color:hsl(var(--sidebar-active-fg));border-color:hsl(var(--sidebar-active))}
 .pg-empresa .tb[aria-disabled=true]{background:hsl(var(--muted))}
 .pg-empresa .tb .lk{position:absolute;top:3px;right:3px}
-.pg-empresa .lay{grid-template-columns:minmax(0,1fr);gap:8px}
 .pg-empresa .cards{gap:12px;padding-top:0}
 .pg-empresa .cd{padding-top:12px}
 .pg-empresa .cd>.lg{position:static;flex-direction:column;gap:0;padding:0 0 8px;background:none;line-height:1.3;max-width:none}
@@ -188,7 +178,7 @@
 @media (min-width:1024px){.pg-empresa.fx{height:calc(100dvh - 108px)}}
 .pg-empresa .zn{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;margin:-4px;padding:4px;scrollbar-width:thin}
 .pg-empresa .zn>.es:first-child,.pg-empresa .zn>.skc:first-child{margin-top:0}
-.pg-empresa .hz,.pg-empresa .lay{margin-top:0}
+.pg-empresa .hz{margin-top:0}
 .pg-empresa .fld input[type=file],.pg-empresa .fi{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .pg-empresa .st.spin svg{animation:emp-spin 1s linear infinite}
 @keyframes emp-spin{to{transform:rotate(360deg)}}
@@ -199,3 +189,13 @@
 .pg-empresa .tabs[data-n="5"]{grid-template-columns:repeat(5,max-content);overflow-x:auto;scrollbar-width:none}
 .pg-empresa .tabs[data-n="5"] .tb{padding:0 12px}
 }
+/* Refinamiento visual: sin cambios de estructura ni comportamiento. */
+.pg-empresa { --muted-foreground: 215 20% 36%; }
+.dark .pg-empresa { --muted-foreground: 215 20% 70%; }
+.pg-empresa .hd h1 { color: hsl(var(--primary)); font-weight: 700; }
+
+.pg-empresa .tb[aria-selected=true]:not([aria-disabled=true]) { background: hsl(var(--primary) / .08); }
+.pg-empresa .pl.warn { background: hsl(var(--warning-text) / .08); border-color: hsl(var(--warning-text) / .3); }
+.pg-empresa .pl.bad { background: hsl(var(--destructive-text) / .08); border-color: hsl(var(--destructive-text) / .3); }
+.pg-empresa .pl.ok { background: hsl(var(--success-text) / .08); border-color: hsl(var(--success-text) / .3); }
+.pg-empresa .pl.neu { background: hsl(var(--muted)); }

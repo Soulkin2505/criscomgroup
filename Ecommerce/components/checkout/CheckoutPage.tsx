@@ -9,12 +9,12 @@ import Link from "next/link"
 import { cartService, type CartItem } from "@/services/cartService"
 import { orderService, type CreateOrderRequest } from "@/services/orderService"
 import { ecommerceAuthService } from "@/services/ecommerceApi"
-import { requestCulqiToken } from "@/lib/culqi"
+import { requestCulqiPayment, type CulqiOrderMetodo } from "@/lib/culqi"
 import { getErrorMessage } from "@/lib/getErrorMessage"
 import { useConfigPublica } from "@/hooks/useSocialLinks"
 import ContactSection from "./ContactSection"
 import DeliverySection from "./DeliverySection"
-import PaymentSection from "./PaymentSection"
+import PaymentSection, { BILLETERA_MAX, BILLETERA_MIN, CUOTEALO_MAX, CUOTEALO_MIN, YAPE_LIMITE } from "./PaymentSection"
 import { NotesSection, ReceiptSection } from "./ReceiptSection"
 import { calcTotals, SummaryAside, SummaryMobile } from "./OrderSummary"
 import { waAyuda, type MetodoPago, type Quote } from "./checkoutShared"
@@ -22,6 +22,10 @@ import "@/styles/checkout.css"
 
 export type CheckoutForm = Omit<CreateOrderRequest, "items" | "metodo_pago"> & { metodo_pago: MetodoPago }
 export type CheckoutErrors = Partial<Record<"cliente_nombre" | "cliente_email" | "cliente_telefono" | "direccion_departamento" | "direccion_provincia" | "direccion_distrito" | "direccion_envio" | "ruc" | "razon_social", string>>
+
+// Métodos que Culqi resuelve con una Orden (creada y confirmada por el
+// backend antes de abrir el checkout), en vez de un token del navegador.
+const METODOS_CON_ORDEN: MetodoPago[] = ["billetera_digital", "pago_efectivo", "cuotealo"]
 
 const INITIAL: CheckoutForm = {
   cliente_email: "", cliente_nombre: "", cliente_telefono: "",
@@ -140,6 +144,20 @@ const CheckoutPage = () => {
   const totals = calcTotals(cartItems, form.tipo_entrega, quote, form.metodo_pago)
   const waUrl = waAyuda(config?.whatsapp_number, "")
 
+  // Yape vía Culqi tiene un tope de S/2,000; si el carrito ya lo supera (o creció
+  // por encima tras elegir Yape), no dejamos ese método seleccionado en silencio.
+  useEffect(() => {
+    if (form.metodo_pago === "yape" && totals.total > YAPE_LIMITE) {
+      update("metodo_pago", "tarjeta")
+    }
+    if (form.metodo_pago === "billetera_digital" && (totals.total < BILLETERA_MIN || totals.total > BILLETERA_MAX)) {
+      update("metodo_pago", "tarjeta")
+    }
+    if (form.metodo_pago === "cuotealo" && (totals.total < CUOTEALO_MIN || totals.total > CUOTEALO_MAX)) {
+      update("metodo_pago", "tarjeta")
+    }
+  }, [form.metodo_pago, totals.total])
+
   // Un solo envio: validacion de cliente por campo; error del servidor arriba (400).
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -162,11 +180,21 @@ const CheckoutPage = () => {
       const response = await orderService.createOrder(orderData)
       if (response.success) {
         const numero = response.pedido.numero_pedido as string
-        if (form.metodo_pago === "tarjeta" && response.payment_required) {
+        const pagaPorCulqi = ["tarjeta", "yape", ...METODOS_CON_ORDEN].includes(form.metodo_pago)
+        if (pagaPorCulqi && response.payment_required) {
           try {
             const publicKey = response.culqi_public_key || process.env.NEXT_PUBLIC_CULQI_PUBLIC_KEY
-            const token = await requestCulqiToken(response.pedido, publicKey)
-            const paymentResult = await orderService.payWithCulqi(response.pedido.id_pedido, token, response.payment_token)
+            const ordenMetodo = METODOS_CON_ORDEN.includes(form.metodo_pago) ? (form.metodo_pago as CulqiOrderMetodo) : undefined
+            const result = await requestCulqiPayment(response.pedido, publicKey, response.culqi_order_id, ordenMetodo)
+            if (result.kind === "order") {
+              // Métodos basados en Orden: ya está confirmada en Culqi, pero el
+              // pago llega después por webhook (el cliente puede tardar en
+              // pagar el QR o el código). No hay nada más que enviar aquí.
+              await cartService.clearCart()
+              router.push(`/order-confirmation/${numero}?pago=verificacion`)
+              return
+            }
+            const paymentResult = await orderService.payWithCulqi(response.pedido.id_pedido, result.id, response.payment_token)
             await cartService.clearCart()
             if (paymentResult.pending_reconciliation) {
               router.push(`/order-confirmation/${numero}?pago=verificacion`)
@@ -182,6 +210,10 @@ const CheckoutPage = () => {
               router.push(`/payment-error?pedido=${encodeURIComponent(numero)}&id=${response.pedido.id_pedido}&error=${encodeURIComponent(message)}`)
             }
           }
+        } else if (METODOS_CON_ORDEN.includes(form.metodo_pago) && response.billetera_setup_error) {
+          // El pedido se creó pero Culqi no pudo generar la orden de pago todavía.
+          await cartService.clearCart()
+          router.push(`/payment-error?pedido=${encodeURIComponent(numero)}&id=${response.pedido.id_pedido}&error=${encodeURIComponent(response.billetera_setup_error)}`)
         } else {
           await cartService.clearCart()
           router.push(`/order-confirmation/${numero}`)
@@ -266,7 +298,7 @@ const CheckoutPage = () => {
                 quoteError={quoteError}
                 config={config}
               />
-              <PaymentSection metodo={form.metodo_pago} onChange={(m) => update("metodo_pago", m)} />
+              <PaymentSection metodo={form.metodo_pago} onChange={(m) => update("metodo_pago", m)} total={totals.total} />
               <ReceiptSection form={form} errors={errors} update={update} />
               <NotesSection form={form} update={update} />
             </div>

@@ -52,7 +52,9 @@ const ecommerceController = {
   getPublicStats: async (_req, res) => {
     try {
       const [productosDisponibles, sales] = await Promise.all([
-        Producto.scope('allBusinesses').count({ where: { stock: { [Op.gt]: 0 } } }),
+        // Disponible = stock físico - reservado por pedidos web pagados aún
+        // no entregados; no solo stock físico > 0.
+        Producto.scope('allBusinesses').count({ where: sequelize.literal('stock > stock_reservado') }),
         Venta.scope('allBusinesses').findAll({
           attributes: ['cliente_email', 'cliente_numero_documento', 'cliente_nombre'],
           raw: true,
@@ -100,7 +102,7 @@ const ecommerceController = {
         precio: producto.precio_unitario_con_igv, // Cambiar nombre a 'precio'
         es_oferta: producto.es_oferta,
         precio_oferta: producto.precio_oferta_con_igv, // Cambiar nombre a 'precio_oferta'
-        stock: Number(producto.stock || 0),
+        stock: Math.max(0, Number(producto.stock || 0) - Number(producto.stock_reservado || 0)), // disponible, no stock físico bruto
         condicion: producto.condicion || 'nuevo',
         garantia_meses: producto.garantia_meses ?? (producto.condicion === 'segunda_mano' ? 3 : 12),
         estado_observaciones: producto.estado_observaciones,
@@ -182,7 +184,7 @@ const ecommerceController = {
         precio: producto.precio_unitario_con_igv, // Cambiar nombre a 'precio'
         es_oferta: producto.es_oferta,
         precio_oferta: producto.precio_oferta_con_igv, // Cambiar nombre a 'precio_oferta'
-        stock: Number(producto.stock || 0),
+        stock: Math.max(0, Number(producto.stock || 0) - Number(producto.stock_reservado || 0)), // disponible, no stock físico bruto
         condicion: producto.condicion || 'nuevo',
         garantia_meses: producto.garantia_meses ?? (producto.condicion === 'segunda_mano' ? 3 : 12),
         estado_observaciones: producto.estado_observaciones,
@@ -231,7 +233,7 @@ const ecommerceController = {
         precio: producto.precio_unitario_con_igv, // Cambiar nombre a 'precio'
         es_oferta: producto.es_oferta,
         precio_oferta: producto.precio_oferta_con_igv, // Cambiar nombre a 'precio_oferta'
-        stock: Number(producto.stock || 0),
+        stock: Math.max(0, Number(producto.stock || 0) - Number(producto.stock_reservado || 0)), // disponible, no stock físico bruto
         condicion: producto.condicion || 'nuevo',
         garantia_meses: producto.garantia_meses ?? (producto.condicion === 'segunda_mano' ? 3 : 12),
         estado_observaciones: producto.estado_observaciones,
@@ -278,7 +280,7 @@ const ecommerceController = {
         precio: producto.precio_unitario_con_igv, // Cambiar nombre a 'precio'
         es_oferta: producto.es_oferta,
         precio_oferta: producto.precio_oferta_con_igv, // Cambiar nombre a 'precio_oferta'
-        stock: Number(producto.stock || 0),
+        stock: Math.max(0, Number(producto.stock || 0) - Number(producto.stock_reservado || 0)), // disponible, no stock físico bruto
         imagen_url: generarUrlCompleta(producto.imagen_url, req),
         id_categoria: producto.id_categoria,
         affiliate_business_id: producto.affiliate_business_id,

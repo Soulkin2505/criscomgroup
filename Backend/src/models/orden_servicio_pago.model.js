@@ -5,7 +5,7 @@ module.exports = sequelize.define('OrdenServicioPago', {
   id_pago_servicio: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   id_orden_servicio: { type: DataTypes.INTEGER, allowNull: false },
   metodo: {
-    type: DataTypes.ENUM('efectivo', 'pos', 'qr', 'transferencia', 'otro'),
+    type: DataTypes.ENUM('efectivo', 'pos', 'qr', 'transferencia', 'otro', 'tarjeta', 'yape', 'plin', 'pago_link'),
     allowNull: false,
   },
   monto: { type: DataTypes.DECIMAL(12, 2), allowNull: false },

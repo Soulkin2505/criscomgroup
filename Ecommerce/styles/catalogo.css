@@ -24,8 +24,8 @@
 .pg-catalogo .tile { display:inline-flex; align-items:center; justify-content:center; flex:none; width:36px; height:36px; border-radius:8px; background:var(--muted); color:var(--primary); }
 
 /* Pagina: cabecera de una linea + busqueda */
-.pg-catalogo .pg { padding-top:20px; padding-bottom:8px; }
-.pg-catalogo .ph { display:flex; align-items:center; gap:16px; min-height:44px; }
+.pg-catalogo .pg { padding-top:32px; padding-bottom:8px; }
+.pg-catalogo .ph { display:flex; align-items:center; gap:16px; min-height:44px; padding-bottom:20px; border-bottom:1px solid var(--border); margin-bottom:18px; }
 .pg-catalogo .ph h1 { font-size:28px; line-height:1.1; font-weight:700; letter-spacing:-.015em; }
 .pg-catalogo .ph .cnt { font-size:14px; color:var(--muted-foreground); }
 .pg-catalogo .ph .sp { flex:1; }

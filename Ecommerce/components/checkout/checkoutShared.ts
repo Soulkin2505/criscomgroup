@@ -19,7 +19,7 @@ export const r2 = (n: number): number => Math.round(n * 100) / 100
 
 export interface Quote { amount: number; zone: string; distance_km: number | null }
 
-export type MetodoPago = "yape" | "plin" | "transferencia" | "tarjeta" | "contraentrega"
+export type MetodoPago = "yape" | "billetera_digital" | "pago_efectivo" | "cuotealo" | "transferencia" | "tarjeta" | "contraentrega"
 
 // Chips de estado: icono + palabra (contrato: estados_pedido de checkout-data.json).
 export interface ChipDef { label: string; kind: "ok" | "warn" | "err" | "neu"; icon: LucideIcon }

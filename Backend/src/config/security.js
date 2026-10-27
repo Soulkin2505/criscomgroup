@@ -22,4 +22,12 @@ module.exports = Object.freeze({
     windowMs: numberFromEnv("PUBLIC_FORM_RATE_WINDOW_MS", 15 * 60_000, 60_000, 3_600_000),
     max: numberFromEnv("PUBLIC_FORM_RATE_MAX", 8, 2, 100),
   },
+  // Culqi no firma sus webhooks, así que cada petición entrante dispara una
+  // llamada saliente a la API de Culqi (retrieveCharge) para verificarla. Un
+  // límite propio, más estricto que el de /api en general, evita que alguien
+  // use este endpoint público para forzar tráfico saliente hacia Culqi.
+  webhook: {
+    windowMs: numberFromEnv("WEBHOOK_RATE_WINDOW_MS", 60_000, 10_000, 3_600_000),
+    max: numberFromEnv("WEBHOOK_RATE_MAX", 60, 10, 1_000),
+  },
 });

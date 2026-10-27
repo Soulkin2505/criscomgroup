@@ -5,6 +5,47 @@
 
 .erp-page { container-type: inline-size; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .erp-num { font-variant-numeric: tabular-nums; }
+/* Identidad del dashboard: solo presentación; conserva estructura y accesos. */
+.erp-page:has(> .erp-tabs[aria-label="Secciones del Dashboard"]) {
+  --dash-blue: 221 83% 53%;
+  --dash-purple: 263 70% 50%;
+  --dash-pink: 330 81% 46%;
+  --dash-green: 160 84% 32%;
+
+  & > .erp-hd h1 { color: hsl(var(--dash-purple)); font-weight: 700; }
+  & > .erp-strip { gap: 12px; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+  & > .erp-strip > .erp-cell {
+    --dash-accent: var(--dash-blue);
+    border: 1px solid hsl(var(--border));
+    border-top: 4px solid hsl(var(--dash-accent));
+    border-radius: 12px;
+    background: linear-gradient(135deg, hsl(var(--dash-accent) / .07), transparent 85%), hsl(var(--card));
+    box-shadow: 0 4px 12px hsl(222 47% 11% / .04);
+    gap: 6px;
+    padding: 12px 16px;
+  }
+  & > .erp-strip > .erp-cell:nth-child(2) { --dash-accent: var(--dash-purple); }
+  & > .erp-strip > .erp-cell:nth-child(3) { --dash-accent: var(--dash-pink); }
+  & > .erp-strip > .erp-cell:nth-child(4) { --dash-accent: var(--dash-green); }
+  & > .erp-strip > .erp-cell:hover { background-color: hsl(var(--dash-accent) / .10); border-color: hsl(var(--dash-accent) / .55); }
+  & > .erp-strip .r1 { color: hsl(var(--foreground)); font-weight: 500; }
+  & > .erp-strip .go { color: hsl(var(--dash-accent)); }
+  & > .erp-tabs > .erp-tab[aria-selected="true"] {
+    color: hsl(var(--dash-purple));
+    border-bottom-color: hsl(var(--dash-purple));
+    background: hsl(var(--dash-purple) / .08);
+  }
+  & > .erp-panel .erp-card { box-shadow: 0 5px 16px hsl(222 47% 11% / .04); }
+  & .erp-gc { border-top: 3px solid hsl(var(--dash-green)); }
+  & .erp-gr { border-top: 3px solid hsl(var(--dash-pink)); }
+  & .erp-ch h2 { font-weight: 650; }
+}
+.dark .erp-page:has(> .erp-tabs[aria-label="Secciones del Dashboard"]) {
+  --dash-blue: 217 91% 70%;
+  --dash-purple: 263 90% 76%;
+  --dash-pink: 330 86% 72%;
+  --dash-green: 158 64% 60%;
+}
 .erp-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Cabecera */

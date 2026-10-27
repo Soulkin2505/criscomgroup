@@ -1,14 +1,28 @@
 'use strict';
-// Diagnostico de arranque del area Empresa/SUNAT/Pagos. NO escribe en la base de datos:
-// solo avisa de configuraciones inconsistentes. Las correcciones son acciones explicitas
+// Arranque del area Empresa/SUNAT/Pagos. Solo agrega columnas nuevas (nunca cambia datos) y
+// avisa de configuraciones inconsistentes. Las correcciones son acciones explicitas
 // (p. ej. POST /api/facturacion/emisores/bloquear-ruc20).
 const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 const Company = require('../models/company.model');
 const sunat = require('../services/sunat.service');
+
+const ensureCompanyColumns = async () => {
+  const [existing] = await sequelize.query('SHOW COLUMNS FROM companies');
+  const names = new Set(existing.map(column => column.Field));
+  const columns = {
+    sunat_pruebas_manual: 'TINYINT(1) NOT NULL DEFAULT 0',
+    sunat_produccion_desde: 'DATETIME NULL',
+  };
+  for (const [name, definition] of Object.entries(columns)) {
+    if (!names.has(name)) await sequelize.query(`ALTER TABLE companies ADD COLUMN ${name} ${definition}`);
+  }
+};
 
 const ensureAdminEmpresaSchema = async () => {
   const info = sunat.sunatModeInfo(); // avisa una vez si SUNAT_MODE es invalido
   const issues = [];
+  await ensureCompanyColumns();
   try {
     const defaults = await Company.count({ where: { emisor_predeterminado: true } });
     if (defaults > 1) issues.push(`hay ${defaults} emisores predeterminados`);

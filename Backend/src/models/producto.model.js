@@ -92,6 +92,10 @@ const Producto = sequelize.define(
         min: 0,
       },
     },
+    // Reservado (no físico): unidades de pedidos web ya pagados pero aún no
+    // entregados. Disponible para vender = stock - stock_reservado. El stock
+    // físico solo baja de verdad cuando el pedido pasa a "entregado".
+    stock_reservado: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, validate: { isInt: true, min: 0 } },
     costo_promedio: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
     ultimo_costo: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
     stock_minimo: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
